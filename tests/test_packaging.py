@@ -98,7 +98,7 @@ class TestImportPackaging:
         license_file = Path(__file__).parent.parent / "LICENSE"
         assert license_file.exists()
         content = license_file.read_text()
-        assert "MIT License" in content
+        assert "GNU General Public License" in content
 
     def test_changelog_file(self) -> None:
         changelog = Path(__file__).parent.parent / "CHANGELOG.md"

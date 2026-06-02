@@ -440,7 +440,7 @@ class UnsplashWallpaperApp(Adw.Application):
             application_icon=APP_ID,
             version=VERSION,
             developer_name="Unsplash Wallpaper Team",
-            license_type=Gtk.License.MIT,
+            license_type=Gtk.License.GPL_2_0,
             website="https://github.com/unsplash-wallpaper",
             issue_url="https://github.com/unsplash-wallpaper/issues",
             support_url="https://github.com/unsplash-wallpaper/discussions",

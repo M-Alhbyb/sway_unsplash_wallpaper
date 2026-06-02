@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/unsplash-wallpaper/unsplash-wallpaper/actions/workflows/tests.yml/badge.svg)](https://github.com/unsplash-wallpaper/unsplash-wallpaper/actions/workflows/tests.yml)
 [![Release](https://github.com/unsplash-wallpaper/unsplash-wallpaper/actions/workflows/release.yml/badge.svg)](https://github.com/unsplash-wallpaper/unsplash-wallpaper/actions/workflows/release.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](pyproject.toml)
 
 Unsplash Wallpaper downloads high-resolution photos from [Unsplash](https://unsplash.com) and sets them as your desktop wallpaper on a configurable schedule. It features a modern GTK4 + Libadwaita GUI, system tray support, and full systemd integration.
@@ -214,4 +214,4 @@ See [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) for the current release.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+GNU General Public License v2.0 — see [LICENSE](LICENSE) for details.
