@@ -326,10 +326,10 @@ class UnsplashWallpaperApp(Adw.Application):
 
             lines.append("  Scheduler")
             lines.append(
-                f"    Running:             {'✓' if self._scheduler.is_running else '✗ stopped'}"
+                f"    Interval:            {self._scheduler.get_interval()}"
             )
             lines.append(
-                f"    Interval:            {self._scheduler.get_interval()}"
+                f"    Running:             {'✓' if self._scheduler.is_running else '— not active (diagnostics snapshot)'}"
             )
             lines.append("")
 
@@ -466,6 +466,7 @@ class UnsplashWallpaperApp(Adw.Application):
         self._start_scheduler()
         if self._daemon_mode:
             logger.info("Running in daemon mode (no window)")
+            self.hold()
 
     def do_activate(self) -> None:
         if self._daemon_mode:
@@ -940,15 +941,21 @@ class UnsplashWallpaperApp(Adw.Application):
             AutostartManager.install_systemd_service()
             AutostartManager.install_systemd_timer()
             AutostartManager.enable_systemd_service()
-            print("Systemd service installed and started")
+            AutostartManager.enable_systemd_timer()
+            print("Systemd service and timer installed and started")
             return
 
         if "--remove-service" in args:
             self._setup_logging()
             AutostartManager.disable_systemd_service()
+            AutostartManager.disable_systemd_timer()
             AutostartManager.remove_systemd_service()
-            print("Systemd service removed")
+            print("Systemd service and timer removed")
             return
+
+        if "--daemon" in args:
+            self._daemon_mode = True
+            args = [a for a in args if a != "--daemon"]
 
         self._init_services()
         self._update_tray()

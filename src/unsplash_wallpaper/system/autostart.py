@@ -184,6 +184,36 @@ WantedBy=timers.target
             return False
 
     @staticmethod
+    def enable_systemd_timer() -> bool:
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                [
+                    "systemctl",
+                    "--user",
+                    "enable",
+                    "--now",
+                    f"{APP_ID}.timer",
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                logger.info("Systemd timer enabled and started")
+                return True
+            logger.warning(
+                "Failed to enable systemd timer: %s",
+                result.stderr.decode(),
+            )
+            return False
+        except Exception as e:
+            logger.error(
+                "Failed to enable systemd timer: %s", e
+            )
+            return False
+
+    @staticmethod
     def disable_systemd_service() -> bool:
         import subprocess
 
@@ -203,6 +233,29 @@ WantedBy=timers.target
         except Exception as e:
             logger.error(
                 "Failed to disable systemd service: %s", e
+            )
+            return False
+
+    @staticmethod
+    def disable_systemd_timer() -> bool:
+        import subprocess
+
+        try:
+            subprocess.run(
+                [
+                    "systemctl",
+                    "--user",
+                    "disable",
+                    "--now",
+                    f"{APP_ID}.timer",
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "Failed to disable systemd timer: %s", e
             )
             return False
 

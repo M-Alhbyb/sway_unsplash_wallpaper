@@ -16,6 +16,9 @@ from unsplash_wallpaper.models.wallpaper import Wallpaper
 logger = logging.getLogger(__name__)
 
 
+_THUMBNAIL_SEM = threading.BoundedSemaphore(4)
+
+
 class HistoryPage(Adw.Bin):
     __gsignals__ = {
         "apply-wallpaper": (
@@ -37,6 +40,7 @@ class HistoryPage(Adw.Bin):
         super().__init__()
         self._wallpapers: list[Wallpaper] = wallpapers or []
         self._thumbnail_cache: dict[int, GdkPixbuf.Pixbuf | None] = {}
+        self._cache_lock = threading.Lock()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -101,21 +105,41 @@ class HistoryPage(Adw.Bin):
     def _load_thumbnail_async(
         self, wp: Wallpaper, image_widget: Gtk.Image
     ) -> None:
+        if wp.id is not None:
+            with self._cache_lock:
+                cached = self._thumbnail_cache.get(wp.id)
+                if cached is not None:
+                    self._set_thumbnail(image_widget, cached)
+                    return
+
         def load() -> None:
-            pixbuf = None
-            if wp.local_path and Path(wp.local_path).exists():
-                try:
-                    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                        wp.local_path, 80, 60, True
-                    )
-                except Exception as e:
-                    logger.debug(
-                        "Failed to load thumbnail for %s: %s",
-                        wp.unsplash_id, e,
-                    )
-            GLib.idle_add(
-                self._set_thumbnail, image_widget, pixbuf
-            )
+            with _THUMBNAIL_SEM:
+                if wp.id is not None:
+                    with self._cache_lock:
+                        cached = self._thumbnail_cache.get(wp.id)
+                        if cached is not None:
+                            GLib.idle_add(
+                                self._set_thumbnail, image_widget, cached
+                            )
+                            return
+
+                pixbuf = None
+                if wp.local_path and Path(wp.local_path).exists():
+                    try:
+                        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                            wp.local_path, 80, 60, True
+                        )
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to load thumbnail for %s: %s",
+                            wp.unsplash_id, e,
+                        )
+                if wp.id is not None and pixbuf is not None:
+                    with self._cache_lock:
+                        self._thumbnail_cache[wp.id] = pixbuf
+                GLib.idle_add(
+                    self._set_thumbnail, image_widget, pixbuf
+                )
 
         threading.Thread(target=load, daemon=True).start()
 
