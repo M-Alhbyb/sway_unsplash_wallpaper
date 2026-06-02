@@ -81,6 +81,10 @@ class SwayBackend(WallpaperBackend):
         return "Sway"
 
     def _kill_existing(self) -> None:
+        self._kill_by_pid()
+        self._kill_by_pkill()
+
+    def _kill_by_pid(self) -> None:
         if self._process is not None:
             try:
                 self._process.terminate()
@@ -100,9 +104,26 @@ class SwayBackend(WallpaperBackend):
             except ProcessLookupError:
                 pass
             except Exception as e:
-                logger.debug("Error terminating swaybg: %s", e)
+                logger.debug("Error terminating tracked swaybg: %s", e)
             finally:
                 self._process = None
+
+    @staticmethod
+    def _kill_by_pkill() -> None:
+        try:
+            result = subprocess.run(
+                ["pkill", "swaybg"],
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                logger.info(
+                    "Terminated stray swaybg processes via pkill"
+                )
+        except FileNotFoundError:
+            logger.debug("pkill not available, skipping")
+        except Exception as e:
+            logger.debug("Error running pkill: %s", e)
 
     @staticmethod
     def check_dependencies() -> bool:

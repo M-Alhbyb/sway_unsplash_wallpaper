@@ -260,7 +260,10 @@ class TestExpiredNetwork:
 class TestBackendRecovery:
     def test_swaybg_not_found(self) -> None:
         with patch("shutil.which", return_value=None):
-            with patch("subprocess.Popen") as mock_popen:
+            with (
+                patch("subprocess.run") as _,
+                patch("subprocess.Popen") as mock_popen,
+            ):
                 mock_popen.side_effect = FileNotFoundError(
                     "swaybg not found"
                 )

@@ -141,8 +141,11 @@ class TestWallpaperDownload:
 
 
 class TestWallpaperApplication:
+    @patch("subprocess.run")
     @patch("subprocess.Popen")
-    def test_sway_backend_apply(self, mock_popen) -> None:
+    def test_sway_backend_apply(
+        self, mock_popen, mock_run
+    ) -> None:
         mock_process = MagicMock()
         mock_process.pid = 12345
         mock_popen.return_value = mock_process
@@ -157,9 +160,10 @@ class TestWallpaperApplication:
             start_new_session=True,
         )
 
+    @patch("subprocess.run")
     @patch("subprocess.Popen")
     def test_sway_backend_kill_existing(
-        self, mock_popen
+        self, mock_popen, mock_run
     ) -> None:
         old_process = MagicMock()
         old_process.pid = 11111

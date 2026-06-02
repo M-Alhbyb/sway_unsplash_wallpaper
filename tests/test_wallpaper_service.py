@@ -86,8 +86,11 @@ class TestSwayBackend:
         with patch("shutil.which", return_value=None):
             assert SwayBackend.check_dependencies() is False
 
+    @patch("subprocess.run")
     @patch("subprocess.Popen")
-    def test_apply_success(self, mock_popen) -> None:
+    def test_apply_success(
+        self, mock_popen, mock_run
+    ) -> None:
         mock_process = MagicMock()
         mock_process.pid = 12345
         mock_popen.return_value = mock_process
@@ -96,8 +99,11 @@ class TestSwayBackend:
         result = backend.apply("/tmp/test.jpg")
         assert result is True
 
+    @patch("subprocess.run")
     @patch("subprocess.Popen")
-    def test_apply_kills_previous(self, mock_popen) -> None:
+    def test_apply_kills_previous(
+        self, mock_popen, mock_run
+    ) -> None:
         old_process = MagicMock()
         old_process.pid = 11111
         new_process = MagicMock()
@@ -111,14 +117,16 @@ class TestSwayBackend:
 
         old_process.terminate.assert_called_once()
 
+    @patch("subprocess.run")
     @patch("subprocess.Popen")
-    def test_apply_file_not_found(self, mock_popen) -> None:
+    def test_apply_file_not_found(self, mock_popen, mock_run) -> None:
         mock_popen.side_effect = FileNotFoundError("swaybg not found")
         backend = SwayBackend()
         result = backend.apply("/tmp/test.jpg")
         assert result is False
 
-    def test_terminate_timeout_triggers_kill(self) -> None:
+    @patch("subprocess.run")
+    def test_terminate_timeout_triggers_kill(self, mock_run) -> None:
         from subprocess import TimeoutExpired
 
         backend = SwayBackend()
@@ -131,7 +139,8 @@ class TestSwayBackend:
         mock_process.terminate.assert_called_once()
         mock_process.kill.assert_called_once()
 
-    def test_process_lookup_error(self) -> None:
+    @patch("subprocess.run")
+    def test_process_lookup_error(self, mock_run) -> None:
         backend = SwayBackend()
         mock_process = MagicMock()
         mock_process.pid = 44444
@@ -140,6 +149,47 @@ class TestSwayBackend:
 
         backend._kill_existing()
         assert backend._process is None
+
+    @patch("subprocess.run")
+    def test_kill_by_pkill_called(self, mock_run) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        backend = SwayBackend()
+        backend._kill_existing()
+        mock_run.assert_called_once_with(
+            ["pkill", "swaybg"],
+            capture_output=True,
+            timeout=10,
+        )
+
+    @patch("subprocess.run")
+    def test_kill_by_pkill_not_available(self, mock_run) -> None:
+        mock_run.side_effect = FileNotFoundError()
+        backend = SwayBackend()
+        backend._kill_existing()
+
+    @patch("subprocess.run")
+    def test_no_orphan_after_twenty_apply_calls(
+        self, mock_run
+    ) -> None:
+        backend = SwayBackend()
+        processes = []
+
+        for i in range(20):
+            mock_process = MagicMock()
+            mock_process.pid = 50000 + i
+            processes.append(mock_process)
+
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.side_effect = processes
+            for i in range(20):
+                path = f"/tmp/test_batch_{i}.jpg"
+                result = backend.apply(path)
+                assert result is True
+                if i > 0:
+                    processes[i - 1].terminate.assert_called_once()
+
+            assert backend._process is not None
+            assert backend._process.pid == 50019
 
 
 class TestHyprlandBackend:

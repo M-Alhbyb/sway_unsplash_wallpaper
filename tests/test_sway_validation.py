@@ -28,33 +28,26 @@ class TestSwayValidation:
         assert cls == SwayBackend
 
     def test_swaybg_no_orphan_processes(self) -> None:
-        result = subprocess.run(
-            ["pgrep", "-c", "swaybg"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        initial_count = int(result.stdout.strip() or 0)
         backend = SwayBackend()
         fake_path = "/tmp/test_validation_wallpaper.jpg"
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch("subprocess.run") as _,
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock_process = MagicMock()
             mock_process.pid = 99999
             mock_popen.return_value = mock_process
-            backend.apply(fake_path)
+            result = backend.apply(fake_path)
+            assert result is True
+            mock_popen.assert_called_once()
 
-        result2 = subprocess.run(
-            ["pgrep", "-c", "swaybg"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        final_count = int(result2.stdout.strip() or 0)
-        assert final_count >= initial_count
 
     def test_single_wallpaper_update(self) -> None:
         backend = SwayBackend()
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch("subprocess.run") as _,
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock_process = MagicMock()
             mock_process.pid = 12345
             mock_popen.return_value = mock_process
@@ -71,7 +64,10 @@ class TestSwayValidation:
             mock_process.pid = 10000 + i
             processes.append(mock_process)
 
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch("subprocess.run") as _,
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock_popen.side_effect = processes
             for i in range(100):
                 path = f"/tmp/test_batch_{i}.jpg"
@@ -91,7 +87,10 @@ class TestSwayValidation:
             mock.pid = 20000 + process_count
             return mock
 
-        with patch("subprocess.Popen", side_effect=mock_popen_side):
+        with (
+            patch("subprocess.run") as _,
+            patch("subprocess.Popen", side_effect=mock_popen_side),
+        ):
             start = time.time()
             for i in range(12):
                 path = f"/tmp/test_rapid_{i}.jpg"
@@ -102,7 +101,10 @@ class TestSwayValidation:
 
     def test_restart_while_active(self) -> None:
         backend = SwayBackend()
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch("subprocess.run") as _,
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock1 = MagicMock()
             mock1.pid = 30001
             mock2 = MagicMock()
@@ -122,7 +124,10 @@ class TestSwayValidation:
 
     def test_kill_stale_process(self) -> None:
         backend = SwayBackend()
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch("subprocess.run") as _,
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock_old = MagicMock()
             mock_old.pid = 40001
             mock_old.terminate.side_effect = subprocess.TimeoutExpired(
@@ -171,7 +176,10 @@ class TestSwayValidation:
 
     def test_suspend_resume(self) -> None:
         backend = SwayBackend()
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch("subprocess.run") as _,
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock_process = MagicMock()
             mock_process.pid = 50001
             mock_popen.return_value = mock_process
