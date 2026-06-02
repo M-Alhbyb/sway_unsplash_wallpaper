@@ -103,9 +103,9 @@ class SecretsMaskingFilter(logging.Filter):
 
 
 class UnsplashWallpaperApp(Adw.Application):
-    def __init__(self) -> None:
+    def __init__(self, application_id: str | None = None) -> None:
         super().__init__(
-            application_id=APP_ID,
+            application_id=application_id or APP_ID,
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
         self.set_resource_base_path("/com/unsplash/wallpaper")
@@ -966,3 +966,10 @@ class UnsplashWallpaperApp(Adw.Application):
     def main() -> None:
         app = UnsplashWallpaperApp()
         app.run()
+
+
+def main() -> None:
+    from unsplash_wallpaper.constants import APP_ID_GUI
+
+    app = UnsplashWallpaperApp(application_id=APP_ID_GUI)
+    app.run()

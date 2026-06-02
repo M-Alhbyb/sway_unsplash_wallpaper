@@ -1,6 +1,7 @@
 from pathlib import Path
 
 APP_ID = "com.unsplash.wallpaper"
+APP_ID_GUI = "com.unsplash.wallpaper.gui"
 APP_NAME = "Unsplash Wallpaper"
 VERSION = "1.0.0"
 
