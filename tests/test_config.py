@@ -61,3 +61,33 @@ class TestConfig:
         config.set("key", "original")
         config2 = Config(config._db)
         assert config2.get("key") == "original"
+
+    def test_keywords_default(self, config: Config) -> None:
+        assert config.get_keywords() == []
+
+    def test_set_and_get_keywords(self, config: Config) -> None:
+        config.set_keywords(["nature", "mountains", "forest"])
+        assert config.get_keywords() == ["nature", "mountains", "forest"]
+        config.set_keywords([])
+        assert config.get_keywords() == []
+
+    def test_keywords_empty_entries_filtered(self, config: Config) -> None:
+        config.set_keywords(["nature", "", "mountains", "  "])
+        assert config.get_keywords() == ["nature", "mountains"]
+
+    def test_keywords_duplicates_filtered(self, config: Config) -> None:
+        config.set_keywords(["nature", "mountains", "nature"])
+        assert config.get_keywords() == ["nature", "mountains"]
+
+    def test_keywords_case_insensitive_dedup(self, config: Config) -> None:
+        config.set_keywords(["Nature", "nature", "NATURE"])
+        assert config.get_keywords() == ["Nature"]
+
+    def test_keywords_long_filtered(self, config: Config) -> None:
+        long_kw = "a" * 101
+        config.set_keywords(["valid", long_kw])
+        assert config.get_keywords() == ["valid"]
+
+    def test_keywords_parsing_from_store(self, config: Config) -> None:
+        config.set("keywords", "  nature  , mountains , , forest  ")
+        assert config.get_keywords() == ["nature", "mountains", "forest"]

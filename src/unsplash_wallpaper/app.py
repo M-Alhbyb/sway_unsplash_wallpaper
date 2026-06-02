@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -20,7 +21,7 @@ import gi
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, GdkPixbuf, Gio, GLib, Gtk
 
 from unsplash_wallpaper.config import Config
 from unsplash_wallpaper.constants import (
@@ -64,10 +65,16 @@ logger = logging.getLogger(__name__)
 
 
 class SecretsMaskingFilter(logging.Filter):
-    SENSITIVE_KEYS = frozenset({
-        "access_key", "client_id", "api_key", "secret", "token",
-        "unsplash_access_key",
-    })
+    SENSITIVE_KEYS = frozenset(
+        {
+            "access_key",
+            "client_id",
+            "api_key",
+            "secret",
+            "token",
+            "unsplash_access_key",
+        }
+    )
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg_lower = record.msg.lower() if record.msg else ""
@@ -80,6 +87,7 @@ class SecretsMaskingFilter(logging.Filter):
                 }
             elif isinstance(record.args, tuple):
                 import re
+
                 record.args = tuple(
                     self._mask(a) if "access" in str(a).lower() else a
                     for a in record.args
@@ -135,9 +143,12 @@ class UnsplashWallpaperApp(Adw.Application):
                     subprocess.run(
                         [
                             "notify-send",
-                            "--app-name", APP_NAME,
-                            "--icon", "dialog-error",
-                            "--urgency", "critical",
+                            "--app-name",
+                            APP_NAME,
+                            "--icon",
+                            "dialog-error",
+                            "--urgency",
+                            "critical",
                             f"{APP_NAME} crashed",
                             str(exc_value),
                         ],
@@ -192,30 +203,52 @@ class UnsplashWallpaperApp(Adw.Application):
         lines.append("  System")
         lines.append(f"    Python version:      {sys.version.split()[0]}")
         lines.append(f"    Platform:            {sys.platform}")
-        lines.append(f"    Desktop env:         {os.environ.get('XDG_CURRENT_DESKTOP', 'not set')}")
-        session_type = "Wayland" if os.environ.get("WAYLAND_DISPLAY") else "X11"
+        lines.append(
+            f"    Desktop env:         {os.environ.get('XDG_CURRENT_DESKTOP', 'not set')}"
+        )
+        session_type = (
+            "Wayland" if os.environ.get("WAYLAND_DISPLAY") else "X11"
+        )
         lines.append(f"    Session type:        {session_type}")
-        display = os.environ.get("WAYLAND_DISPLAY", os.environ.get("DISPLAY", "not set"))
+        display = os.environ.get(
+            "WAYLAND_DISPLAY", os.environ.get("DISPLAY", "not set")
+        )
         lines.append(f"    Display:             {display}")
-        lines.append(f"    Desktop session:     {os.environ.get('DESKTOP_SESSION', 'not set')}")
+        lines.append(
+            f"    Desktop session:     {os.environ.get('DESKTOP_SESSION', 'not set')}"
+        )
         lines.append("")
 
         lines.append("  Dependencies")
-        lines.append(f"    swaybg:              {'✓' if shutil.which('swaybg') else '✗ not found'}")
-        lines.append(f"    notify-send:         {'✓' if shutil.which('notify-send') else '✗ not found'}")
-        lines.append(f"    gsettings:           {'✓' if shutil.which('gsettings') else '✗ not found'}")
-        lines.append(f"    hyprctl:             {'✓' if shutil.which('hyprctl') else '✗ not found'}")
-        lines.append(f"    qdbus:               {'✓' if shutil.which('qdbus') else '✗ not found'}")
+        lines.append(
+            f"    swaybg:              {'✓' if shutil.which('swaybg') else '✗ not found'}"
+        )
+        lines.append(
+            f"    notify-send:         {'✓' if shutil.which('notify-send') else '✗ not found'}"
+        )
+        lines.append(
+            f"    gsettings:           {'✓' if shutil.which('gsettings') else '✗ not found'}"
+        )
+        lines.append(
+            f"    hyprctl:             {'✓' if shutil.which('hyprctl') else '✗ not found'}"
+        )
+        lines.append(
+            f"    qdbus:               {'✓' if shutil.which('qdbus') else '✗ not found'}"
+        )
         lines.append("")
 
         try:
             backend_cls = WallpaperBackend.detect()
             backend_name = backend_cls().get_name()
-            backend_avail = "✓" if WallpaperBackend.is_available() else "✗ unavailable"
+            backend_avail = (
+                "✓" if WallpaperBackend.is_available() else "✗ unavailable"
+            )
         except Exception:
             backend_name = "unknown"
             backend_avail = "✗ error"
-        lines.append(f"  Active Backend:       {backend_name} ({backend_avail})")
+        lines.append(
+            f"  Active Backend:       {backend_name} ({backend_avail})"
+        )
         lines.append("")
 
         wallpapers_count = 0
@@ -223,23 +256,33 @@ class UnsplashWallpaperApp(Adw.Application):
             wallpapers_count = len(list(WALLPAPERS_DIR.iterdir()))
         wallpaper_bytes = 0
         if WALLPAPERS_DIR.exists():
-            wallpaper_bytes = sum(f.stat().st_size for f in WALLPAPERS_DIR.iterdir() if f.is_file())
+            wallpaper_bytes = sum(
+                f.stat().st_size
+                for f in WALLPAPERS_DIR.iterdir()
+                if f.is_file()
+            )
 
         lines.append("  Storage")
         lines.append(f"    Wallpapers stored:   {wallpapers_count}")
-        lines.append(f"    Wallpapers size:     {self._format_size(wallpaper_bytes)}")
+        lines.append(
+            f"    Wallpapers size:     {self._format_size(wallpaper_bytes)}"
+        )
         lines.append("")
 
         try:
             db = Database.get_instance()
             count = db.count_wallpapers()
             schema = db.get_setting("schema_version", "unknown")
-            db_size = DATABASE_PATH.stat().st_size if DATABASE_PATH.exists() else 0
+            db_size = (
+                DATABASE_PATH.stat().st_size if DATABASE_PATH.exists() else 0
+            )
             lines.append("  Database")
             lines.append(f"    Status:              ✓ connected")
             lines.append(f"    Schema version:      {schema}")
             lines.append(f"    History entries:     {count}")
-            lines.append(f"    Size:                {self._format_size(db_size)}")
+            lines.append(
+                f"    Size:                {self._format_size(db_size)}"
+            )
         except Exception as e:
             lines.append(f"    Status:              ✗ {e}")
         lines.append("")
@@ -254,22 +297,45 @@ class UnsplashWallpaperApp(Adw.Application):
             dark_mode = self._config.get("dark_mode", "follow_system")
 
             lines.append("  API Configuration")
-            lines.append(f"    API key set:         {'✓' if has_key else '✗ not configured'}")
-            lines.append(f"    Remaining requests:  {self._unsplash.remaining_requests if has_key else 'N/A'}")
+            lines.append(
+                f"    API key set:         {'✓' if has_key else '✗ not configured'}"
+            )
+            lines.append(
+                f"    Remaining requests:  {self._unsplash.remaining_requests if has_key else 'N/A'}"
+            )
             lines.append("")
+
+            keywords = self._config.get_keywords()
 
             lines.append("  Settings")
             lines.append(f"    Update interval:     {interval}")
             lines.append(f"    Resolution:          {resolution}")
-            lines.append(f"    Notifications:       {'✓ enabled' if notifications else '✗ disabled'}")
-            lines.append(f"    Autostart:           {'✓ enabled' if autostart else '✗ disabled'}")
+            lines.append(
+                f"    Notifications:       {'✓ enabled' if notifications else '✗ disabled'}"
+            )
+            lines.append(
+                f"    Autostart:           {'✓ enabled' if autostart else '✗ disabled'}"
+            )
             lines.append(f"    Dark mode:           {dark_mode}")
-            lines.append(f"    Categories:          {', '.join(categories) if categories else 'all'}")
+            lines.append(
+                f"    Categories:          {', '.join(categories) if categories else 'all'}"
+            )
+            if keywords:
+                lines.append(f"    Configured keywords: {len(keywords)}")
+                lines.append("    Keywords:")
+                for kw in keywords:
+                    lines.append(f"      * {kw}")
+            else:
+                lines.append("    Configured keywords: 0")
             lines.append("")
 
             lines.append("  Scheduler")
-            lines.append(f"    Running:             {'✓' if self._scheduler.is_running else '✗ stopped'}")
-            lines.append(f"    Interval:            {self._scheduler.get_interval()}")
+            lines.append(
+                f"    Running:             {'✓' if self._scheduler.is_running else '✗ stopped'}"
+            )
+            lines.append(
+                f"    Interval:            {self._scheduler.get_interval()}"
+            )
             lines.append("")
 
             lines.append("  Storage Paths")
@@ -351,9 +417,7 @@ class UnsplashWallpaperApp(Adw.Application):
             self.add_action(action)
 
         self.set_accels_for_action("app.quit", ["<primary>q"])
-        self.set_accels_for_action(
-            "app.preferences", ["<primary>comma"]
-        )
+        self.set_accels_for_action("app.preferences", ["<primary>comma"])
 
     def _on_change_wallpaper(self, *args: Any) -> None:
         if self._window:
@@ -415,12 +479,8 @@ class UnsplashWallpaperApp(Adw.Application):
         if self._window is None:
             self._window = MainWindow(application=self)
 
-            self._window.connect(
-                "change-wallpaper", self._on_change_wallpaper
-            )
-            self._window.connect(
-                "open-settings", self._on_open_preferences
-            )
+            self._window.connect("change-wallpaper", self._on_change_wallpaper)
+            self._window.connect("open-settings", self._on_open_preferences)
             self._window.connect("open-folder", self._on_open_folder)
             self._window.connect(
                 "categories-changed", self._on_categories_changed
@@ -479,13 +539,21 @@ class UnsplashWallpaperApp(Adw.Application):
 
     def _download_and_apply_wallpaper(self) -> None:
         try:
+            keywords = self._config.get_keywords()
             categories = self._config.get_categories()
             resolution = self._config.get("resolution", "full_hd")
 
-            photo = self._unsplash.get_random_photo(
-                categories=categories if categories else None,
-                resolution=resolution,
-            )
+            if keywords:
+                query = random.choice(keywords)
+                photo = self._unsplash.get_random_photo(
+                    resolution=resolution,
+                    query=query,
+                )
+            else:
+                photo = self._unsplash.get_random_photo(
+                    categories=categories if categories else None,
+                    resolution=resolution,
+                )
 
             if self._history.is_downloaded(photo["id"]):
                 logger.info(
@@ -546,9 +614,7 @@ class UnsplashWallpaperApp(Adw.Application):
             )
             GLib.idle_add(self._finish_download, None)
         except Exception as e:
-            logger.error(
-                "Failed to download wallpaper: %s", e, exc_info=True
-            )
+            logger.error("Failed to download wallpaper: %s", e, exc_info=True)
             self._show_notification(
                 "Error", f"Failed to change wallpaper: {e}"
             )
@@ -592,17 +658,17 @@ class UnsplashWallpaperApp(Adw.Application):
             self._tray.set_attention(not success)
         self._finish_download(None)
 
-    def _show_notification(
-        self, title: str, body: str
-    ) -> None:
+    def _show_notification(self, title: str, body: str) -> None:
         if not self._config.get_bool("notifications"):
             return
         try:
             subprocess.run(
                 [
                     "notify-send",
-                    "--app-name", APP_NAME,
-                    "--icon", APP_ID,
+                    "--app-name",
+                    APP_NAME,
+                    "--icon",
+                    APP_ID,
                     title,
                     body,
                 ],
@@ -682,6 +748,7 @@ class UnsplashWallpaperApp(Adw.Application):
         settings = self._config.to_dict()
         prefs = PreferencesWindow(settings, self._window)
         prefs.connect("settings-changed", self._on_settings_changed)
+        prefs.connect("test-search", self._on_test_search)
         prefs.present()
 
     def _on_settings_changed(
@@ -693,9 +760,7 @@ class UnsplashWallpaperApp(Adw.Application):
                 self._config.set(key, value)
 
         if "update_interval" in settings:
-            self._scheduler.set_interval(
-                settings["update_interval"]
-            )
+            self._scheduler.set_interval(settings["update_interval"])
 
         if "autostart" in settings:
             if settings["autostart"] == "true":
@@ -708,21 +773,143 @@ class UnsplashWallpaperApp(Adw.Application):
 
         logger.info("Settings updated")
 
+    def _on_test_search(
+        self, _prefs: PreferencesWindow, keywords: list[str]
+    ) -> None:
+        if not keywords:
+            return
+        threading.Thread(
+            target=self._perform_test_search,
+            args=(keywords,),
+            daemon=True,
+        ).start()
+
+    def _perform_test_search(self, keywords: list[str]) -> None:
+        try:
+            query = random.choice(keywords)
+            resolution = self._config.get("resolution", "full_hd")
+
+            photo = self._unsplash.get_random_photo(
+                resolution=resolution,
+                query=query,
+            )
+            image_data = self._unsplash.download_image(photo["url"])
+
+            if not self._validate_image_data(image_data):
+                GLib.idle_add(
+                    self._show_test_search_error,
+                    "Downloaded image is not valid",
+                )
+                return
+
+            GLib.idle_add(
+                self._show_search_preview,
+                image_data,
+                query,
+                photo["author"],
+                photo.get("description", ""),
+            )
+        except UnsplashAuthError:
+            GLib.idle_add(
+                self._show_test_search_error, "Invalid or missing API key"
+            )
+        except UnsplashRateLimitError:
+            GLib.idle_add(
+                self._show_test_search_error, "API rate limit exceeded"
+            )
+        except UnsplashNetworkError as e:
+            GLib.idle_add(self._show_test_search_error, f"Network error: {e}")
+        except Exception as e:
+            logger.error("Test search failed: %s", e, exc_info=True)
+            GLib.idle_add(self._show_test_search_error, str(e))
+
+    def _show_search_preview(
+        self,
+        image_data: bytes,
+        keyword: str,
+        author: str,
+        description: str,
+    ) -> None:
+        if not self._window:
+            return
+        try:
+            temp_dir = DATA_DIR / "temp"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_path = temp_dir / "preview.jpg"
+            temp_path.write_bytes(image_data)
+
+            dialog = Adw.Window(
+                transient_for=self._window,
+                modal=True,
+                title=f"Preview: {keyword}",
+                default_width=600,
+                default_height=500,
+            )
+
+            box = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=12,
+                margin_start=12,
+                margin_end=12,
+                margin_top=12,
+                margin_bottom=12,
+            )
+            dialog.set_content(box)
+
+            title_label = Gtk.Label()
+            title_label.set_markup(f"<b>Keyword:</b> {keyword}")
+            title_label.set_xalign(0.0)
+            box.append(title_label)
+
+            if author:
+                author_label = Gtk.Label(label=f"By: {author}", xalign=0.0)
+                box.append(author_label)
+
+            if description:
+                desc_label = Gtk.Label(
+                    label=description,
+                    wrap=True,
+                    xalign=0.0,
+                    max_width_chars=60,
+                )
+                box.append(desc_label)
+
+            image = Gtk.Image()
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                str(temp_path), 560, 350, True
+            )
+            if pixbuf:
+                image.set_from_pixbuf(pixbuf)
+            box.append(image)
+
+            close_btn = Gtk.Button(label="Close")
+            close_btn.add_css_class("suggested-action")
+            close_btn.connect("clicked", lambda _b: dialog.close())
+            box.append(close_btn)
+
+            dialog.present()
+        except Exception as e:
+            logger.error("Failed to show preview: %s", e)
+
+    def _show_test_search_error(self, message: str) -> None:
+        if not self._window:
+            return
+        dialog = Adw.AlertDialog(
+            heading="Test Search Failed",
+            body=message,
+        )
+        dialog.add_response("ok", "OK")
+        dialog.present(self._window)
+
     def _apply_style(self) -> None:
         style = self._config.get("dark_mode", "follow_system")
         manager = Adw.StyleManager.get_default()
         if style == "dark":
-            manager.set_color_scheme(
-                Adw.ColorScheme.FORCE_DARK
-            )
+            manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         elif style == "light":
-            manager.set_color_scheme(
-                Adw.ColorScheme.FORCE_LIGHT
-            )
+            manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
         else:
-            manager.set_color_scheme(
-                Adw.ColorScheme.PREFER_LIGHT
-            )
+            manager.set_color_scheme(Adw.ColorScheme.PREFER_LIGHT)
 
     def _open_wallpaper_folder(self) -> None:
         path = str(WALLPAPERS_DIR)
@@ -734,9 +921,7 @@ class UnsplashWallpaperApp(Adw.Application):
                 stderr=subprocess.DEVNULL,
             )
         except Exception as e:
-            logger.error(
-                "Failed to open wallpaper folder: %s", e
-            )
+            logger.error("Failed to open wallpaper folder: %s", e)
 
     def _update_tray(self) -> None:
         if self._tray:

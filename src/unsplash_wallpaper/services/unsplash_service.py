@@ -38,10 +38,12 @@ class UnsplashService:
     def __init__(self, config: Config | None = None) -> None:
         self._config = config or Config()
         self._session = requests.Session()
-        self._session.headers.update({
-            "Accept-Version": "v1",
-            "User-Agent": "UnsplashWallpaperManager/1.0",
-        })
+        self._session.headers.update(
+            {
+                "Accept-Version": "v1",
+                "User-Agent": "UnsplashWallpaperManager/1.0",
+            }
+        )
         self._remaining_requests: int = 50
         self._reset_time: float = 0.0
 
@@ -60,9 +62,7 @@ class UnsplashService:
             self._reset_time = float(reset)
         if self._remaining_requests <= 0:
             wait = max(self._reset_time - time.time(), 0)
-            logger.warning(
-                "Rate limit reached. Resets in %d seconds", wait
-            )
+            logger.warning("Rate limit reached. Resets in %d seconds", wait)
             if wait > 0 and wait < 3600:
                 time.sleep(wait + 1)
 
@@ -71,6 +71,7 @@ class UnsplashService:
         categories: list[str] | None = None,
         resolution: str = "full_hd",
         retries: int = DEFAULT_RETRY_LIMIT,
+        query: str | None = None,
     ) -> dict[str, Any]:
         access_key = self._get_access_key()
         used_ids: set[str] = set()
@@ -81,7 +82,9 @@ class UnsplashService:
                     "client_id": access_key,
                     "count": 1,
                 }
-                if categories:
+                if query is not None:
+                    params["query"] = query
+                elif categories:
                     query = random.choice(categories)
                     params["query"] = query
 
@@ -102,13 +105,9 @@ class UnsplashService:
                 if response.status_code == 401:
                     raise UnsplashAuthError("Invalid Unsplash access key")
                 if response.status_code == 403:
-                    raise UnsplashRateLimitError(
-                        "API rate limit exceeded"
-                    )
+                    raise UnsplashRateLimitError("API rate limit exceeded")
                 if response.status_code == 404:
-                    raise UnsplashAPIError(
-                        "API endpoint not found"
-                    )
+                    raise UnsplashAPIError("API endpoint not found")
                 if response.status_code != 200:
                     raise UnsplashAPIError(
                         f"API returned status {response.status_code}"
@@ -119,9 +118,7 @@ class UnsplashService:
                     if not data:
                         if attempt < retries - 1:
                             continue
-                        raise UnsplashAPIError(
-                            "No photos returned from API"
-                        )
+                        raise UnsplashAPIError("No photos returned from API")
                     photo = data[0]
                 else:
                     photo = data
@@ -140,11 +137,12 @@ class UnsplashService:
                     "description": photo.get(
                         "description",
                         photo.get("alt_description", ""),
-                    ) or "",
+                    )
+                    or "",
                     "url": urls.get("full", ""),
-                    "download_location": photo.get(
-                        "links", {}
-                    ).get("download_location", ""),
+                    "download_location": photo.get("links", {}).get(
+                        "download_location", ""
+                    ),
                     "category": params.get("query", ""),
                     "raw_data": photo,
                 }
@@ -163,7 +161,7 @@ class UnsplashService:
                     e,
                 )
                 if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                 else:
                     raise UnsplashNetworkError(
                         f"Network request failed after {retries} attempts: {e}"
@@ -176,7 +174,7 @@ class UnsplashService:
                     e,
                 )
                 if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                 else:
                     raise UnsplashNetworkError(
                         f"Request timed out after {retries} attempts"
@@ -189,7 +187,7 @@ class UnsplashService:
                     e,
                 )
                 if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                 else:
                     raise UnsplashNetworkError(
                         f"Request failed after {retries} attempts: {e}"
@@ -206,9 +204,7 @@ class UnsplashService:
             logger.info("Downloaded image from %s", url)
             return response.content
         except requests.exceptions.RequestException as e:
-            raise UnsplashNetworkError(
-                f"Failed to download image: {e}"
-            ) from e
+            raise UnsplashNetworkError(f"Failed to download image: {e}") from e
 
     def track_download(self, download_location: str) -> None:
         if not download_location:
@@ -221,9 +217,7 @@ class UnsplashService:
                 timeout=10,
             )
             if response.status_code == 200:
-                logger.info(
-                    "Tracked download at %s", download_location
-                )
+                logger.info("Tracked download at %s", download_location)
             else:
                 logger.warning(
                     "Download tracking returned %d for %s",

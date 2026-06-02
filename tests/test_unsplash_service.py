@@ -93,6 +93,66 @@ class TestUnsplashService:
             service.get_random_photo()
 
     @patch("requests.Session.get")
+    def test_get_random_photo_with_query(
+        self, mock_get, service: UnsplashService
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "id": "photo123",
+                "user": {"name": "Test Photographer"},
+                "description": "A beautiful landscape",
+                "alt_description": "landscape",
+                "urls": {"full": "https://example.com/photo.jpg"},
+                "links": {
+                    "download_location": "https://api.unsplash.com/photos/photo123/download"
+                },
+            }
+        ]
+        mock_response.headers = {
+            "X-Ratelimit-Remaining": "49",
+            "X-Ratelimit-Reset": "0",
+        }
+        mock_get.return_value = mock_response
+
+        result = service.get_random_photo(query="sunset")
+        assert result["id"] == "photo123"
+        assert result["category"] == "sunset"
+        call_kwargs = mock_get.call_args[1]
+        assert call_kwargs["params"]["query"] == "sunset"
+
+    @patch("requests.Session.get")
+    def test_get_random_photo_query_overrides_categories(
+        self, mock_get, service: UnsplashService
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "id": "photo123",
+                "user": {"name": "Test Photographer"},
+                "description": "",
+                "alt_description": "",
+                "urls": {"full": "https://example.com/photo.jpg"},
+                "links": {"download_location": ""},
+            }
+        ]
+        mock_response.headers = {
+            "X-Ratelimit-Remaining": "49",
+            "X-Ratelimit-Reset": "0",
+        }
+        mock_get.return_value = mock_response
+
+        result = service.get_random_photo(
+            categories=["nature", "space"],
+            query="sunset",
+        )
+        assert result["category"] == "sunset"
+        call_kwargs = mock_get.call_args[1]
+        assert call_kwargs["params"]["query"] == "sunset"
+
+    @patch("requests.Session.get")
     def test_network_retry(
         self, mock_get, service: UnsplashService
     ) -> None:

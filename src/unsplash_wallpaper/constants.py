@@ -77,6 +77,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "resolution": DEFAULT_RESOLUTION,
     "dark_mode": "follow_system",
     "categories": "",
+    "keywords": "",
 }
 
 DB_SCHEMA_VERSION = 1

@@ -5,6 +5,7 @@ import subprocess
 from typing import Any
 
 import gi
+
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
@@ -18,6 +19,7 @@ from unsplash_wallpaper.constants import (
     RESOLUTION_KEYS,
     RESOLUTIONS,
 )
+from unsplash_wallpaper.config import MAX_KEYWORD_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +31,16 @@ class PreferencesWindow(Adw.PreferencesWindow):
             None,
             (GObject.TYPE_PYOBJECT,),
         ),
+        "test-search": (
+            GObject.SignalFlags.RUN_FIRST,
+            None,
+            (GObject.TYPE_PYOBJECT,),
+        ),
     }
 
-    def __init__(self, settings: dict[str, str], parent: Gtk.Window | None = None) -> None:
+    def __init__(
+        self, settings: dict[str, str], parent: Gtk.Window | None = None
+    ) -> None:
         super().__init__()
         self.set_transient_for(parent)
         self.set_modal(True)
@@ -51,7 +60,9 @@ class PreferencesWindow(Adw.PreferencesWindow):
         api_page.add(api_group)
 
         self._api_key_row = Adw.PasswordEntryRow(title="Access Key")
-        self._api_key_row.set_text(self._settings.get("unsplash_access_key", ""))
+        self._api_key_row.set_text(
+            self._settings.get("unsplash_access_key", "")
+        )
         self._api_key_row.connect("notify::text", self._on_key_changed)
         api_group.add(self._api_key_row)
 
@@ -84,8 +95,12 @@ class PreferencesWindow(Adw.PreferencesWindow):
         )
         interval_keys = list(INTERVALS.keys())
         if current_interval in interval_keys:
-            self._interval_row.set_selected(interval_keys.index(current_interval))
-        self._interval_row.connect("notify::selected", self._on_setting_changed)
+            self._interval_row.set_selected(
+                interval_keys.index(current_interval)
+            )
+        self._interval_row.connect(
+            "notify::selected", self._on_setting_changed
+        )
         general_group.add(self._interval_row)
 
         self._resolution_row = Adw.ComboRow(title="Preferred Resolution")
@@ -95,8 +110,12 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._resolution_row.set_model(res_list)
         current_res = self._settings.get("resolution", "full_hd")
         if current_res in RESOLUTION_KEYS:
-            self._resolution_row.set_selected(RESOLUTION_KEYS.index(current_res))
-        self._resolution_row.connect("notify::selected", self._on_setting_changed)
+            self._resolution_row.set_selected(
+                RESOLUTION_KEYS.index(current_res)
+            )
+        self._resolution_row.connect(
+            "notify::selected", self._on_setting_changed
+        )
         general_group.add(self._resolution_row)
 
         self._max_count_row = Adw.SpinRow(
@@ -131,48 +150,71 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._notifications_row.set_active(
             self._settings.get("notifications", "true").lower() == "true"
         )
-        self._notifications_row.connect("notify::active", self._on_setting_changed)
+        self._notifications_row.connect(
+            "notify::active", self._on_setting_changed
+        )
         toggles_group.add(self._notifications_row)
 
         categories_group = Adw.PreferencesGroup(title="Categories")
         categories_group.set_description("Select wallpaper categories")
         options_page.add(categories_group)
 
-        categories_flow = Gtk.FlowBox(
-            homogeneous=True,
-            max_children_per_line=4,
-            min_children_per_line=2,
-            selection_mode=Gtk.SelectionMode.NONE,
+        categories_grid = Gtk.Grid(
             column_spacing=6,
             row_spacing=6,
             margin_top=6,
+            column_homogeneous=True,
         )
-        categories_group.add(categories_flow)
+        categories_group.add(categories_grid)
 
-        from unsplash_wallpaper.constants import CATEGORIES, CATEGORY_LABELS
         self._cat_toggles: dict[str, Gtk.ToggleButton] = {}
-        current_cats = self._settings.get("categories", "").split(",") if self._settings.get("categories") else []
-        for cat in CATEGORIES:
+        current_cats = (
+            self._settings.get("categories", "").split(",")
+            if self._settings.get("categories")
+            else []
+        )
+        for i, cat in enumerate(CATEGORIES):
             label = CATEGORY_LABELS.get(cat, cat.title())
             btn = Gtk.ToggleButton(label=label)
             btn.set_active(cat in current_cats)
             btn.connect("toggled", self._on_cat_toggled, cat)
             self._cat_toggles[cat] = btn
-            categories_flow.append(btn)
+            categories_grid.attach(btn, i % 4, i // 4, 1, 1)
+
+        # Keywords group
+        keywords_group = Adw.PreferencesGroup(title="Keywords")
+        keywords_group.set_description(
+            "Comma-separated search keywords (overrides categories when set)"
+        )
+        options_page.add(keywords_group)
+
+        self._keywords_row = Adw.EntryRow(title="Keywords")
+        self._keywords_row.set_text(self._settings.get("keywords", ""))
+        self._keywords_row.set_show_apply_button(True)
+        self._keywords_row.connect("notify::text", self._on_keywords_changed)
+        self._keywords_row.connect("apply", self._on_keywords_applied)
+        keywords_group.add(self._keywords_row)
+
+        self._keywords_status = Adw.ActionRow()
+        self._keywords_status.set_subtitle("Enter comma-separated keywords")
+        keywords_group.add(self._keywords_status)
+
+        test_btn = Gtk.Button(label="Test Search")
+        test_btn.add_css_class("suggested-action")
+        test_btn.connect("clicked", self._on_test_search)
+        test_btn_row = Adw.ActionRow(title="")
+        test_btn_row.add_suffix(test_btn)
+        keywords_group.add(test_btn_row)
 
         dark_group = Adw.PreferencesGroup(title="Appearance")
         options_page.add(dark_group)
 
         self._dark_mode_row = Adw.ComboRow(title="Dark Mode")
-        dark_modes = Gtk.StringList.new(
-            ["Follow System", "Light", "Dark"]
-        )
+        dark_modes = Gtk.StringList.new(["Follow System", "Light", "Dark"])
         self._dark_mode_row.set_model(dark_modes)
         current_dark = self._settings.get("dark_mode", "follow_system")
         mapping = {"follow_system": 0, "light": 1, "dark": 2}
-        self._dark_mode_row.set_selected(
-            mapping.get(current_dark, 0)
-        )
+        self._dark_mode_row.set_selected(mapping.get(current_dark, 0))
         self._dark_mode_row.connect(
             "notify::selected", self._on_setting_changed
         )
@@ -180,6 +222,52 @@ class PreferencesWindow(Adw.PreferencesWindow):
 
     def _on_cat_toggled(self, btn: Gtk.ToggleButton, cat: str) -> None:
         self._on_setting_changed(btn)
+
+    def _on_keywords_changed(self, *args: Any) -> None:
+        raw = self._keywords_row.get_text()
+        parts = [k.strip() for k in raw.split(",")] if raw else []
+        valid: list[str] = []
+        errors: list[str] = []
+        seen: set[str] = set()
+        for kw in parts:
+            if not kw:
+                errors.append("Contains empty entry")
+                continue
+            if len(kw) > MAX_KEYWORD_LENGTH:
+                errors.append(
+                    f"'{kw[:20]}...' exceeds {MAX_KEYWORD_LENGTH} chars"
+                )
+                continue
+            lower = kw.lower()
+            if lower in seen:
+                errors.append(f"Duplicate keyword: '{kw}'")
+                continue
+            seen.add(lower)
+            valid.append(kw)
+
+        if errors:
+            self._keywords_status.set_subtitle(errors[0])
+            self._keywords_status.add_css_class("error")
+        elif valid:
+            label = ", ".join(valid)
+            self._keywords_status.set_subtitle(f"Keywords: [ {label} ]")
+            self._keywords_status.remove_css_class("error")
+        else:
+            self._keywords_status.set_subtitle(
+                "Enter comma-separated keywords"
+            )
+            self._keywords_status.remove_css_class("error")
+
+    def _on_keywords_applied(self, *args: Any) -> None:
+        self._on_setting_changed(*args)
+
+    def _on_test_search(self, _btn: Gtk.Button) -> None:
+        raw = self._keywords_row.get_text()
+        keywords = [k.strip() for k in raw.split(",") if k.strip()]
+        if not keywords:
+            self._keywords_status.set_subtitle("No keywords to search")
+            return
+        self.emit("test-search", keywords)
 
     def _on_key_changed(self, *args: Any) -> None:
         key = self._api_key_row.get_text()
@@ -220,6 +308,7 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._settings["categories"] = ",".join(
             cat for cat, btn in self._cat_toggles.items() if btn.get_active()
         )
+        self._settings["keywords"] = self._keywords_row.get_text()
         self._settings["max_wallpapers"] = str(
             int(self._max_count_row.get_value())
         )
@@ -232,7 +321,9 @@ class PreferencesWindow(Adw.PreferencesWindow):
 
         dark_idx = self._dark_mode_row.get_selected()
         dark_mapping = {0: "follow_system", 1: "light", 2: "dark"}
-        self._settings["dark_mode"] = dark_mapping.get(dark_idx, "follow_system")
+        self._settings["dark_mode"] = dark_mapping.get(
+            dark_idx, "follow_system"
+        )
 
     def get_settings(self) -> dict[str, str]:
         self._collect_settings()
@@ -259,9 +350,15 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._notifications_row.set_active(
             self._settings.get("notifications", "true").lower() == "true"
         )
-        current_cats = self._settings.get("categories", "").split(",") if self._settings.get("categories") else []
+        current_cats = (
+            self._settings.get("categories", "").split(",")
+            if self._settings.get("categories")
+            else []
+        )
         for cat, btn in self._cat_toggles.items():
             btn.set_active(cat in current_cats)
+        self._keywords_row.set_text(self._settings.get("keywords", ""))
+        self._on_keywords_changed()
         dark_mapping_rev = {
             "follow_system": 0,
             "light": 1,

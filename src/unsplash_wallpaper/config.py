@@ -8,6 +8,8 @@ from unsplash_wallpaper.database import Database
 
 logger = logging.getLogger(__name__)
 
+MAX_KEYWORD_LENGTH = 100
+
 
 class Config:
     def __init__(self, database: Database | None = None) -> None:
@@ -24,9 +26,7 @@ class Config:
                 self._cache[key] = value
 
     def get(self, key: str, default: str | None = None) -> str:
-        return self._cache.get(
-            key, DEFAULT_SETTINGS.get(key, default or "")
-        )
+        return self._cache.get(key, DEFAULT_SETTINGS.get(key, default or ""))
 
     def set(self, key: str, value: str) -> None:
         self._cache[key] = value
@@ -53,6 +53,33 @@ class Config:
 
     def set_categories(self, categories: list[str]) -> None:
         self.set("categories", ",".join(categories))
+
+    def get_keywords(self) -> list[str]:
+        kw = self.get("keywords", "")
+        if not kw:
+            return []
+        return [k.strip() for k in kw.split(",") if k.strip()]
+
+    def set_keywords(self, keywords: list[str]) -> None:
+        cleaned = self._validate_keywords(keywords)
+        self.set("keywords", ",".join(cleaned))
+
+    @staticmethod
+    def _validate_keywords(keywords: list[str]) -> list[str]:
+        seen: set[str] = set()
+        result: list[str] = []
+        for kw in keywords:
+            cleaned = kw.strip()
+            if not cleaned:
+                continue
+            if len(cleaned) > MAX_KEYWORD_LENGTH:
+                continue
+            lower = cleaned.lower()
+            if lower in seen:
+                continue
+            seen.add(lower)
+            result.append(cleaned)
+        return result
 
     def get_resolution(self) -> str:
         return self.get("resolution", "full_hd")

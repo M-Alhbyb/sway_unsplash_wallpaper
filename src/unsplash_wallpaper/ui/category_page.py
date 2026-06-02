@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 import gi
+
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
@@ -23,6 +22,7 @@ class CategoryPage(Adw.Bin):
     def __init__(self, selected_categories: list[str] | None = None) -> None:
         super().__init__()
         self._selected: set[str] = set(selected_categories or [])
+        self._loading = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -49,26 +49,23 @@ class CategoryPage(Adw.Bin):
         subtitle.set_xalign(0.0)
         box.append(subtitle)
 
-        flowbox = Gtk.FlowBox(
-            homogeneous=True,
-            max_children_per_line=4,
-            min_children_per_line=2,
-            selection_mode=Gtk.SelectionMode.NONE,
+        grid = Gtk.Grid(
             column_spacing=6,
             row_spacing=6,
             margin_top=6,
+            column_homogeneous=True,
         )
-        box.append(flowbox)
+        box.append(grid)
 
         self._toggle_buttons: dict[str, Gtk.ToggleButton] = {}
-        for cat in CATEGORIES:
+        for i, cat in enumerate(CATEGORIES):
             label_text = CATEGORY_LABELS.get(cat, cat.title())
             btn = Gtk.ToggleButton(label=label_text)
             btn.add_css_class("category-btn")
             btn.set_active(cat in self._selected)
             btn.connect("toggled", self._on_toggle, cat)
             self._toggle_buttons[cat] = btn
-            flowbox.append(btn)
+            grid.attach(btn, i % 4, i // 4, 1, 1)
 
         self._select_all_btn = Gtk.Button(label="Select All")
         self._select_all_btn.connect("clicked", self._on_select_all)
@@ -85,18 +82,23 @@ class CategoryPage(Adw.Bin):
             self._selected.add(category)
         else:
             self._selected.discard(category)
-        self._emit_changed()
+        if not self._loading:
+            self._emit_changed()
 
     def _on_select_all(self, _button: Gtk.Button) -> None:
+        self._loading = True
         for cat in CATEGORIES:
             self._toggle_buttons[cat].set_active(True)
             self._selected.add(cat)
+        self._loading = False
         self._emit_changed()
 
     def _on_clear(self, _button: Gtk.Button) -> None:
+        self._loading = True
         for cat in CATEGORIES:
             self._toggle_buttons[cat].set_active(False)
             self._selected.clear()
+        self._loading = False
         self._emit_changed()
 
     def _emit_changed(self) -> None:
@@ -107,6 +109,9 @@ class CategoryPage(Adw.Bin):
 
     def set_selected(self, categories: list[str]) -> None:
         self._selected = set(categories)
+        self._loading = True
         for cat in CATEGORIES:
             if cat in self._toggle_buttons:
                 self._toggle_buttons[cat].set_active(cat in self._selected)
+        self._loading = False
+        self._emit_changed()
