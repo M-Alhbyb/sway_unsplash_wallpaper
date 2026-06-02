@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from typing import Any
 
 import gi
@@ -41,31 +42,39 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._build_ui()
 
     def _build_ui(self) -> None:
-        # API Key group
-        api_group = Adw.PreferencesGroup(title="Unsplash API")
-        self.add(api_group)
+        # Wrap groups in pages
+        api_page = Adw.PreferencesPage()
+        api_page.set_title("API")
+        self.add(api_page)
 
-        self._api_key_row = Adw.EntryRow(title="Access Key")
+        api_group = Adw.PreferencesGroup(title="Unsplash API")
+        api_page.add(api_group)
+
+        self._api_key_row = Adw.PasswordEntryRow(title="Access Key")
         self._api_key_row.set_text(self._settings.get("unsplash_access_key", ""))
-        self._api_key_row.connect("notify::text", self._on_setting_changed)
+        self._api_key_row.connect("notify::text", self._on_key_changed)
         api_group.add(self._api_key_row)
+
+        self._key_status = Adw.ActionRow()
+        self._key_status.set_subtitle("Not validated")
+        api_group.add(self._key_status)
 
         api_help = Adw.ActionRow()
         api_help.set_subtitle(
             "Get your access key from https://unsplash.com/developers"
         )
-        api_help.add_suffix(
-            Gtk.Button(
-                label="Open",
-                css_classes=["flat"],
-                halign=Gtk.Align.END,
-            )
-        )
+        open_btn = Gtk.Button(label="Open", css_classes=["flat"])
+        open_btn.connect("clicked", self._on_open_unsplash)
+        api_help.add_suffix(open_btn)
         api_group.add(api_help)
 
-        # General group
+        # General page
+        general_page = Adw.PreferencesPage()
+        general_page.set_title("General")
+        self.add(general_page)
+
         general_group = Adw.PreferencesGroup(title="General Settings")
-        self.add(general_group)
+        general_page.add(general_group)
 
         self._interval_row = Adw.ComboRow(title="Update Interval")
         interval_list = Gtk.StringList.new(list(INTERVALS.keys()))
@@ -102,9 +111,13 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._max_count_row.connect("notify::value", self._on_setting_changed)
         general_group.add(self._max_count_row)
 
-        # Toggles group
+        # Options page
+        options_page = Adw.PreferencesPage()
+        options_page.set_title("Options")
+        self.add(options_page)
+
         toggles_group = Adw.PreferencesGroup(title="Options")
-        self.add(toggles_group)
+        options_page.add(toggles_group)
 
         self._autostart_row = Adw.SwitchRow(title="Auto Start")
         self._autostart_row.set_active(
@@ -121,9 +134,34 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._notifications_row.connect("notify::active", self._on_setting_changed)
         toggles_group.add(self._notifications_row)
 
-        # Dark mode group
+        categories_group = Adw.PreferencesGroup(title="Categories")
+        categories_group.set_description("Select wallpaper categories")
+        options_page.add(categories_group)
+
+        categories_flow = Gtk.FlowBox(
+            homogeneous=True,
+            max_children_per_line=4,
+            min_children_per_line=2,
+            selection_mode=Gtk.SelectionMode.NONE,
+            column_spacing=6,
+            row_spacing=6,
+            margin_top=6,
+        )
+        categories_group.add(categories_flow)
+
+        from unsplash_wallpaper.constants import CATEGORIES, CATEGORY_LABELS
+        self._cat_toggles: dict[str, Gtk.ToggleButton] = {}
+        current_cats = self._settings.get("categories", "").split(",") if self._settings.get("categories") else []
+        for cat in CATEGORIES:
+            label = CATEGORY_LABELS.get(cat, cat.title())
+            btn = Gtk.ToggleButton(label=label)
+            btn.set_active(cat in current_cats)
+            btn.connect("toggled", self._on_cat_toggled, cat)
+            self._cat_toggles[cat] = btn
+            categories_flow.append(btn)
+
         dark_group = Adw.PreferencesGroup(title="Appearance")
-        self.add(dark_group)
+        options_page.add(dark_group)
 
         self._dark_mode_row = Adw.ComboRow(title="Dark Mode")
         dark_modes = Gtk.StringList.new(
@@ -139,6 +177,29 @@ class PreferencesWindow(Adw.PreferencesWindow):
             "notify::selected", self._on_setting_changed
         )
         dark_group.add(self._dark_mode_row)
+
+    def _on_cat_toggled(self, btn: Gtk.ToggleButton, cat: str) -> None:
+        self._on_setting_changed(btn)
+
+    def _on_key_changed(self, *args: Any) -> None:
+        key = self._api_key_row.get_text()
+        if not key:
+            self._key_status.set_subtitle("Required for API access")
+        elif len(key) < 10:
+            self._key_status.set_subtitle("Key seems too short")
+        else:
+            self._key_status.set_subtitle("Key looks valid (validated on use)")
+        self._on_setting_changed(*args)
+
+    def _on_open_unsplash(self, _btn: Gtk.Button) -> None:
+        try:
+            subprocess.Popen(
+                ["xdg-open", "https://unsplash.com/developers"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
     def _on_setting_changed(self, _widget: Gtk.Widget, *args: Any) -> None:
         self._collect_settings()
@@ -156,6 +217,9 @@ class PreferencesWindow(Adw.PreferencesWindow):
         if 0 <= res_idx < len(RESOLUTION_KEYS):
             self._settings["resolution"] = RESOLUTION_KEYS[res_idx]
 
+        self._settings["categories"] = ",".join(
+            cat for cat, btn in self._cat_toggles.items() if btn.get_active()
+        )
         self._settings["max_wallpapers"] = str(
             int(self._max_count_row.get_value())
         )
@@ -195,6 +259,9 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self._notifications_row.set_active(
             self._settings.get("notifications", "true").lower() == "true"
         )
+        current_cats = self._settings.get("categories", "").split(",") if self._settings.get("categories") else []
+        for cat, btn in self._cat_toggles.items():
+            btn.set_active(cat in current_cats)
         dark_mapping_rev = {
             "follow_system": 0,
             "light": 1,

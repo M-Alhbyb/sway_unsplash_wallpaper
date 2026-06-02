@@ -15,6 +15,10 @@ class StorageService:
         self.storage_path = storage_path.resolve()
         self.ensure_directories()
 
+    @property
+    def root(self) -> Path:
+        return self.storage_path
+
     def ensure_directories(self) -> None:
         self.storage_path.mkdir(parents=True, exist_ok=True)
 

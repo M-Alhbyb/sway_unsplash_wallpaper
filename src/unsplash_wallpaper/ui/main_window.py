@@ -82,7 +82,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _build_ui(self) -> None:
         overlay = Gtk.Overlay()
-        self.set_child(overlay)
+        self.set_content(overlay)
         self._loading_overlay = overlay
 
         toolbar_view = Adw.ToolbarView()

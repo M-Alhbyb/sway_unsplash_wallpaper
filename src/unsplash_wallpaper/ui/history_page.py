@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
 import gi
+
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Adw, GdkPixbuf, GObject, Gtk
+from gi.repository import Adw, GdkPixbuf, GLib, GObject, Gtk
 
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 
@@ -35,6 +37,7 @@ class HistoryPage(Adw.Bin):
     ) -> None:
         super().__init__()
         self._wallpapers: list[Wallpaper] = wallpapers or []
+        self._thumbnail_cache: dict[int, GdkPixbuf.Pixbuf | None] = {}
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -59,12 +62,25 @@ class HistoryPage(Adw.Bin):
         self._list_box.add_css_class("boxed-list")
         scrolled.set_child(self._list_box)
 
-        self._empty_label = Gtk.Label(
-            label="No wallpapers in history yet",
+        self._empty_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
             margin_top=48,
             margin_bottom=48,
         )
-        self._empty_label.add_css_class("dim-label")
+        empty_icon = Gtk.Image()
+        empty_icon.set_from_icon_name("image-x-generic")
+        empty_icon.set_pixel_size(48)
+        self._empty_box.append(empty_icon)
+        empty_label = Gtk.Label(
+            label="No wallpapers in history yet.\nClick 'Change Now' to "
+                  "download your first wallpaper.",
+            justify=Gtk.Justification.CENTER,
+        )
+        empty_label.add_css_class("dim-label")
+        self._empty_box.append(empty_label)
 
         self._refresh_list()
 
@@ -76,12 +92,41 @@ class HistoryPage(Adw.Bin):
             self._list_box.remove(child)
 
         if not self._wallpapers:
-            self._list_box.append(self._empty_label)
+            self._list_box.append(self._empty_box)
             return
 
         for wp in self._wallpapers:
             row = self._create_wallpaper_row(wp)
             self._list_box.append(row)
+
+    def _load_thumbnail_async(
+        self, wp: Wallpaper, image_widget: Gtk.Image
+    ) -> None:
+        def load() -> None:
+            pixbuf = None
+            if wp.local_path and Path(wp.local_path).exists():
+                try:
+                    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                        wp.local_path, 80, 60, True
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "Failed to load thumbnail for %s: %s",
+                        wp.unsplash_id, e,
+                    )
+            GLib.idle_add(
+                self._set_thumbnail, image_widget, pixbuf
+            )
+
+        threading.Thread(target=load, daemon=True).start()
+
+    def _set_thumbnail(
+        self, image: Gtk.Image, pixbuf: GdkPixbuf.Pixbuf | None
+    ) -> None:
+        if pixbuf:
+            image.set_from_pixbuf(pixbuf)
+        else:
+            image.set_from_icon_name("image-x-generic")
 
     def _create_wallpaper_row(self, wp: Wallpaper) -> Gtk.Widget:
         box = Gtk.Box(
@@ -93,25 +138,13 @@ class HistoryPage(Adw.Bin):
             margin_bottom=6,
         )
 
-        # Thumbnail
         thumb = Gtk.Image()
         thumb.set_size_request(80, 60)
-        if wp.local_path:
-            try:
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                    wp.local_path, 80, 60, True
-                )
-                if pixbuf:
-                    thumb.set_from_pixbuf(pixbuf)
-            except Exception:
-                thumb.set_from_icon_name("image-x-generic")
-                thumb.set_pixel_size(40)
-        else:
-            thumb.set_from_icon_name("image-x-generic")
-            thumb.set_pixel_size(40)
+        thumb.set_from_icon_name("image-x-generic")
         box.append(thumb)
 
-        # Info
+        self._load_thumbnail_async(wp, thumb)
+
         info_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=3
         )
@@ -137,7 +170,6 @@ class HistoryPage(Adw.Bin):
 
         box.append(info_box)
 
-        # Action buttons
         apply_btn = Gtk.Button(label="Apply")
         apply_btn.add_css_class("flat")
         apply_btn.connect("clicked", self._on_apply, wp)
@@ -159,6 +191,7 @@ class HistoryPage(Adw.Bin):
 
     def set_wallpapers(self, wallpapers: list[Wallpaper]) -> None:
         self._wallpapers = wallpapers
+        self._thumbnail_cache.clear()
         self._refresh_list()
 
     def append_wallpaper(self, wp: Wallpaper) -> None:
@@ -169,4 +202,5 @@ class HistoryPage(Adw.Bin):
         self._wallpapers = [
             wp for wp in self._wallpapers if wp.id != wallpaper_id
         ]
+        self._thumbnail_cache.pop(wallpaper_id, None)
         self._refresh_list()

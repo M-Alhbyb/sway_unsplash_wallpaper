@@ -56,7 +56,7 @@ class TestHistoryService:
         assert not history.is_downloaded("nonexistent")
 
     def test_enforce_retention(
-        self, history, temp_dir: Path
+        self, history, storage
     ) -> None:
         max_wp = 3
         from unsplash_wallpaper.config import Config
@@ -65,7 +65,7 @@ class TestHistoryService:
         for i in range(5):
             wp = Wallpaper(
                 unsplash_id=f"retention_test_{i}",
-                local_path=str(temp_dir / f"test_{i}.jpg"),
+                local_path=str(storage.root / f"test_{i}.jpg"),
                 downloaded_at=f"2025-01-0{i + 1}T00:00:00",
             )
             history.add(wp)

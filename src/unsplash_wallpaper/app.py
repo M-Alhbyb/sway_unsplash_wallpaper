@@ -26,12 +26,17 @@ from unsplash_wallpaper.config import Config
 from unsplash_wallpaper.constants import (
     APP_ID,
     APP_NAME,
+    API_BASE_URL,
+    AUTOSTART_FILE,
     CATEGORIES,
     CATEGORY_LABELS,
     DATA_DIR,
+    DATABASE_PATH,
     INTERVALS,
     LOG_DIR,
     LOG_FILE,
+    SYSTEMD_SERVICE_FILE,
+    SYSTEMD_TIMER_FILE,
     VERSION,
     WALLPAPERS_DIR,
 )
@@ -46,7 +51,10 @@ from unsplash_wallpaper.services.unsplash_service import (
     UnsplashRateLimitError,
     UnsplashService,
 )
-from unsplash_wallpaper.services.wallpaper_service import WallpaperService
+from unsplash_wallpaper.services.wallpaper_service import (
+    WallpaperBackend,
+    WallpaperService,
+)
 from unsplash_wallpaper.system.autostart import AutostartManager
 from unsplash_wallpaper.tray.tray_manager import TrayManager
 from unsplash_wallpaper.ui.main_window import MainWindow
@@ -56,21 +64,39 @@ logger = logging.getLogger(__name__)
 
 
 class SecretsMaskingFilter(logging.Filter):
+    SENSITIVE_KEYS = frozenset({
+        "access_key", "client_id", "api_key", "secret", "token",
+        "unsplash_access_key",
+    })
+
     def filter(self, record: logging.LogRecord) -> bool:
-        msg = str(record.msg)
-        if isinstance(record.args, dict):
-            args = {k: str(v) for k, v in record.args.items()}
-        elif isinstance(record.args, tuple):
-            args = tuple(str(a) for a in record.args)
-        else:
-            args = record.args
-        msg = msg % args if isinstance(args, (tuple, dict)) else msg
-        for secret_attr in ("access_key", "client_id", "api_key", "secret", "token"):
-            if secret_attr in msg.lower():
-                record.msg = record.msg.replace(
-                    str(record.args[0]), "***MASKED***"
-                ) if record.args else record.msg
+        msg_lower = record.msg.lower() if record.msg else ""
+        has_sensitive = any(k in msg_lower for k in self.SENSITIVE_KEYS)
+        if has_sensitive and record.args:
+            if isinstance(record.args, dict):
+                record.args = {
+                    k: self._mask(v) if self._is_sensitive_key(k) else v
+                    for k, v in record.args.items()
+                }
+            elif isinstance(record.args, tuple):
+                import re
+                record.args = tuple(
+                    self._mask(a) if "access" in str(a).lower() else a
+                    for a in record.args
+                )
         return True
+
+    @staticmethod
+    def _is_sensitive_key(key: str) -> bool:
+        kl = key.lower()
+        return any(sk in kl for sk in SecretsMaskingFilter.SENSITIVE_KEYS)
+
+    @staticmethod
+    def _mask(value: str) -> str:
+        s = str(value)
+        if len(s) > 8:
+            return s[:4] + "****" + s[-4:]
+        return "********"
 
 
 class UnsplashWallpaperApp(Adw.Application):
@@ -83,7 +109,6 @@ class UnsplashWallpaperApp(Adw.Application):
 
         self._setup_crash_handler()
         self._setup_logging()
-        self._init_services()
 
         self._window: MainWindow | None = None
         self._tray: TrayManager | None = None
@@ -92,7 +117,6 @@ class UnsplashWallpaperApp(Adw.Application):
         self._shutting_down = False
 
         self._setup_actions()
-        self._log_startup_diagnostics()
 
     def _setup_crash_handler(self) -> None:
         def handle_exception(exc_type, exc_value, exc_tb) -> None:
@@ -149,13 +173,135 @@ class UnsplashWallpaperApp(Adw.Application):
 
         logger.info("Logging initialized")
 
+    def _report_diagnostics(self) -> str:
+        lines = []
+        lines.append("=" * 56)
+        lines.append(f"  {APP_NAME} v{VERSION} - Diagnostics Report")
+        lines.append("=" * 56)
+        lines.append("")
+
+        lines.append("  Application")
+        lines.append(f"    Version:             {VERSION}")
+        lines.append(f"    App ID:              {APP_ID}")
+        lines.append(f"    Data directory:      {DATA_DIR}")
+        lines.append(f"    Wallpapers dir:      {WALLPAPERS_DIR}")
+        lines.append(f"    Database path:       {DATABASE_PATH}")
+        lines.append(f"    Log file:            {LOG_FILE}")
+        lines.append("")
+
+        lines.append("  System")
+        lines.append(f"    Python version:      {sys.version.split()[0]}")
+        lines.append(f"    Platform:            {sys.platform}")
+        lines.append(f"    Desktop env:         {os.environ.get('XDG_CURRENT_DESKTOP', 'not set')}")
+        session_type = "Wayland" if os.environ.get("WAYLAND_DISPLAY") else "X11"
+        lines.append(f"    Session type:        {session_type}")
+        display = os.environ.get("WAYLAND_DISPLAY", os.environ.get("DISPLAY", "not set"))
+        lines.append(f"    Display:             {display}")
+        lines.append(f"    Desktop session:     {os.environ.get('DESKTOP_SESSION', 'not set')}")
+        lines.append("")
+
+        lines.append("  Dependencies")
+        lines.append(f"    swaybg:              {'✓' if shutil.which('swaybg') else '✗ not found'}")
+        lines.append(f"    notify-send:         {'✓' if shutil.which('notify-send') else '✗ not found'}")
+        lines.append(f"    gsettings:           {'✓' if shutil.which('gsettings') else '✗ not found'}")
+        lines.append(f"    hyprctl:             {'✓' if shutil.which('hyprctl') else '✗ not found'}")
+        lines.append(f"    qdbus:               {'✓' if shutil.which('qdbus') else '✗ not found'}")
+        lines.append("")
+
+        try:
+            backend_cls = WallpaperBackend.detect()
+            backend_name = backend_cls().get_name()
+            backend_avail = "✓" if WallpaperBackend.is_available() else "✗ unavailable"
+        except Exception:
+            backend_name = "unknown"
+            backend_avail = "✗ error"
+        lines.append(f"  Active Backend:       {backend_name} ({backend_avail})")
+        lines.append("")
+
+        wallpapers_count = 0
+        if WALLPAPERS_DIR.exists():
+            wallpapers_count = len(list(WALLPAPERS_DIR.iterdir()))
+        wallpaper_bytes = 0
+        if WALLPAPERS_DIR.exists():
+            wallpaper_bytes = sum(f.stat().st_size for f in WALLPAPERS_DIR.iterdir() if f.is_file())
+
+        lines.append("  Storage")
+        lines.append(f"    Wallpapers stored:   {wallpapers_count}")
+        lines.append(f"    Wallpapers size:     {self._format_size(wallpaper_bytes)}")
+        lines.append("")
+
+        try:
+            db = Database.get_instance()
+            count = db.count_wallpapers()
+            schema = db.get_setting("schema_version", "unknown")
+            db_size = DATABASE_PATH.stat().st_size if DATABASE_PATH.exists() else 0
+            lines.append("  Database")
+            lines.append(f"    Status:              ✓ connected")
+            lines.append(f"    Schema version:      {schema}")
+            lines.append(f"    History entries:     {count}")
+            lines.append(f"    Size:                {self._format_size(db_size)}")
+        except Exception as e:
+            lines.append(f"    Status:              ✗ {e}")
+        lines.append("")
+
+        try:
+            has_key = self._config.has_valid_api_key()
+            interval = self._config.get("update_interval", "1 hour")
+            resolution = self._config.get("resolution", "full_hd")
+            notifications = self._config.get_bool("notifications")
+            autostart = self._config.get_bool("autostart")
+            categories = self._config.get_categories()
+            dark_mode = self._config.get("dark_mode", "follow_system")
+
+            lines.append("  API Configuration")
+            lines.append(f"    API key set:         {'✓' if has_key else '✗ not configured'}")
+            lines.append(f"    Remaining requests:  {self._unsplash.remaining_requests if has_key else 'N/A'}")
+            lines.append("")
+
+            lines.append("  Settings")
+            lines.append(f"    Update interval:     {interval}")
+            lines.append(f"    Resolution:          {resolution}")
+            lines.append(f"    Notifications:       {'✓ enabled' if notifications else '✗ disabled'}")
+            lines.append(f"    Autostart:           {'✓ enabled' if autostart else '✗ disabled'}")
+            lines.append(f"    Dark mode:           {dark_mode}")
+            lines.append(f"    Categories:          {', '.join(categories) if categories else 'all'}")
+            lines.append("")
+
+            lines.append("  Scheduler")
+            lines.append(f"    Running:             {'✓' if self._scheduler.is_running else '✗ stopped'}")
+            lines.append(f"    Interval:            {self._scheduler.get_interval()}")
+            lines.append("")
+
+            lines.append("  Storage Paths")
+            lines.append(f"    Data:                {DATA_DIR}")
+            lines.append(f"    Wallpapers:          {WALLPAPERS_DIR}")
+            lines.append(f"    Logs:                {LOG_DIR}")
+            lines.append(f"    Database:            {DATABASE_PATH}")
+            lines.append(f"    Autostart:           {AUTOSTART_FILE}")
+            lines.append(f"    Systemd service:     {SYSTEMD_SERVICE_FILE}")
+            lines.append(f"    Systemd timer:       {SYSTEMD_TIMER_FILE}")
+        except Exception as e:
+            lines.append(f"  Error reading config: {e}")
+
+        lines.append("")
+        lines.append("=" * 56)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_size(size: int) -> str:
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} TB"
+
     def _log_startup_diagnostics(self) -> None:
         logger.info("--- Startup Diagnostics ---")
         logger.info("Python version: %s", sys.version)
         logger.info("Platform: %s", sys.platform)
         logger.info("Data directory: %s", DATA_DIR)
         logger.info("Wallpapers directory: %s", WALLPAPERS_DIR)
-        logger.info("Database path: %s", DATA_DIR / "database.db")
+        logger.info("Database path: %s", DATABASE_PATH)
         logger.info("Log file: %s", LOG_FILE)
         logger.info("Sway available: %s", shutil.which("swaybg") is not None)
         logger.info(
@@ -175,9 +321,8 @@ class UnsplashWallpaperApp(Adw.Application):
             wallpapers_count = len(list(WALLPAPERS_DIR.iterdir()))
         logger.info("Stored wallpapers: %d", wallpapers_count)
         db_size = 0
-        db_path = DATA_DIR / "database.db"
-        if db_path.exists():
-            db_size = db_path.stat().st_size
+        if DATABASE_PATH.exists():
+            db_size = DATABASE_PATH.stat().st_size
         logger.info("Database size: %d bytes", db_size)
         logger.info("--- End Diagnostics ---")
 
@@ -246,7 +391,7 @@ class UnsplashWallpaperApp(Adw.Application):
 
     def _on_quit(self, *args: Any) -> None:
         self._shutting_down = True
-        self._scheduler.stop()
+        self._scheduler.cleanup()
         self._unsplash.close()
         if self._tray:
             self._tray.shutdown()
@@ -543,8 +688,6 @@ class UnsplashWallpaperApp(Adw.Application):
         self, _prefs: PreferencesWindow, settings: dict[str, str]
     ) -> None:
         for key, value in settings.items():
-            if key == "categories":
-                continue
             current = self._config.get(key)
             if current != value:
                 self._config.set(key, value)
@@ -603,12 +746,17 @@ class UnsplashWallpaperApp(Adw.Application):
         if args is None:
             args = sys.argv[1:]
 
-        if "--daemon" in args:
-            self._daemon_mode = True
-        if "--tray" in args:
-            self._tray_mode = True
+        if "--version" in args:
+            print(f"{APP_NAME} v{VERSION}")
+            return
+
+        if "--diagnostics" in args:
+            self._init_services()
+            print(self._report_diagnostics())
+            return
 
         if "--install-service" in args:
+            self._setup_logging()
             AutostartManager.install_systemd_service()
             AutostartManager.install_systemd_timer()
             AutostartManager.enable_systemd_service()
@@ -616,19 +764,14 @@ class UnsplashWallpaperApp(Adw.Application):
             return
 
         if "--remove-service" in args:
+            self._setup_logging()
             AutostartManager.disable_systemd_service()
             AutostartManager.remove_systemd_service()
             print("Systemd service removed")
             return
 
-        if "--version" in args:
-            print(f"{APP_NAME} v{VERSION}")
-            return
-
-        if "--diagnostics" in args:
-            self._setup_logging()
-            self._log_startup_diagnostics()
-            return
+        self._init_services()
+        self._update_tray()
 
         super().run(args)
 

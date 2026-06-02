@@ -48,13 +48,17 @@ def history(
 
 
 @pytest.fixture
-def sample_wallpaper() -> Wallpaper:
+def sample_wallpaper(storage: StorageService) -> Wallpaper:
+    storage_path = storage.root / "test123.jpg"
     return Wallpaper(
         unsplash_id="test123",
         author="Test Author",
         description="A test wallpaper",
-        local_path="/tmp/test.jpg",
+        local_path=str(storage_path),
         download_location="https://api.unsplash.com/photos/test123/download",
         category="nature",
         downloaded_at="2025-01-01T00:00:00",
     )
+
+
+

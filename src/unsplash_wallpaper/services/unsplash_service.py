@@ -111,7 +111,7 @@ class UnsplashService:
                     )
                 if response.status_code != 200:
                     raise UnsplashAPIError(
-                        f"API returned status {response.status_code}: {response.text}"
+                        f"API returned status {response.status_code}"
                     )
 
                 data = response.json()

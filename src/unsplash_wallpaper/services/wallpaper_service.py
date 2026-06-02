@@ -65,7 +65,11 @@ class SwayBackend(WallpaperBackend):
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            logger.info("Applied wallpaper via swaybg: %s", path)
+            logger.info(
+                "Applied wallpaper via swaybg (pid %d): %s",
+                self._process.pid,
+                path,
+            )
             return True
         except FileNotFoundError:
             logger.error("swaybg not found. Install swaybg package.")
@@ -78,20 +82,28 @@ class SwayBackend(WallpaperBackend):
         return "Sway"
 
     def _kill_existing(self) -> None:
-        try:
-            result = subprocess.run(
-                ["pkill", "swaybg"],
-                capture_output=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                logger.debug("Killed existing swaybg process")
-        except FileNotFoundError:
-            pass
-        except subprocess.TimeoutExpired:
-            logger.warning("Timeout killing existing swaybg")
-        except Exception as e:
-            logger.debug("Error killing swaybg: %s", e)
+        if self._process is not None:
+            try:
+                self._process.terminate()
+                try:
+                    self._process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        "swaybg pid %d did not terminate in time, killing",
+                        self._process.pid,
+                    )
+                    self._process.kill()
+                    self._process.wait(timeout=2)
+                logger.debug(
+                    "Terminated previous swaybg (pid %d)",
+                    self._process.pid,
+                )
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                logger.debug("Error terminating swaybg: %s", e)
+            finally:
+                self._process = None
 
     @staticmethod
     def check_dependencies() -> bool:

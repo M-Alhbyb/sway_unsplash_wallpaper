@@ -25,9 +25,9 @@ class SchedulerService:
         minutes = INTERVALS.get(interval_label, 60)
         self._interval_minutes = minutes
         logger.info("Scheduler interval set to %s (%d minutes)", interval_label, minutes)
-        if self._running:
+        if self._running and self._callback is not None:
             self.stop()
-            self.start()
+            self.start(self._callback)
 
     def get_interval(self) -> str:
         for label, minutes in INTERVALS.items():
@@ -53,7 +53,12 @@ class SchedulerService:
         if self._timer_id is not None:
             GLib.source_remove(self._timer_id)
             self._timer_id = None
+            logger.info("Scheduler timer removed")
         logger.info("Scheduler stopped")
+
+    def cleanup(self) -> None:
+        self.stop()
+        self._callback = None
 
     def _tick(self) -> bool:
         if not self._running:
