@@ -1,0 +1,13 @@
+[Unit]
+Description=Unsplash Wallpaper Manager - Automatic wallpaper changer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/unsplash-wallpaper --daemon
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Unsplash Wallpaper
+GenericName=Wallpaper Manager
+Comment=Automatically download and change wallpapers from Unsplash
+Exec=unsplash-wallpaper %U
+Icon=com.unsplash.wallpaper
+Terminal=false
+Categories=Utility;Graphics;
+StartupNotify=true
+X-GNOME-UsesNotifications=true

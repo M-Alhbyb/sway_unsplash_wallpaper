@@ -1,0 +1,50 @@
+{
+  "app-id": "com.unsplash.wallpaper",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "47",
+  "sdk": "org.gnome.Sdk",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.rust-stable"
+  ],
+  "command": "unsplash-wallpaper",
+  "finish-args": [
+    "--share=network",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--socket=session-bus",
+    "--talk-name=org.freedesktop.Notifications",
+    "--filesystem=~/.local/share/unsplash-wallpaper",
+    "--filesystem=xdg-run/sway:ro",
+    "--own-name=org.kde.StatusNotifierWatcher"
+  ],
+  "modules": [
+    {
+      "name": "python3-requests",
+      "buildsystem": "simple",
+      "build-commands": [
+        "pip3 install --prefix=/app --no-deps requests"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "url": "https://files.pythonhosted.org/packages/source/r/requests/requests-2.31.0.tar.gz",
+          "sha256": "942c5a758f98d79ea4bd4a0aeacff68bde71cbbf09e2bc0a4d5a3a4e3b0b2b1"
+        }
+      ]
+    },
+    {
+      "name": "unsplash-wallpaper",
+      "buildsystem": "simple",
+      "build-commands": [
+        "pip3 install --prefix=/app --no-deps ."
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "../"
+        }
+      ]
+    }
+  ]
+}

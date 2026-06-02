@@ -1,0 +1,17 @@
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+*.db
+*.log
+wallpapers/
+.DS_Store
+*.swp
+*.swo
+*~
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
