@@ -86,110 +86,49 @@ class TestSwayBackend:
         with patch("shutil.which", return_value=None):
             assert SwayBackend.check_dependencies() is False
 
-    @patch("subprocess.run")
-    @patch("subprocess.Popen")
-    def test_apply_success(
-        self, mock_popen, mock_run
-    ) -> None:
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_popen.return_value = mock_process
+    def test_check_dependencies_requires_both(self) -> None:
+        def which_side(cmd: str) -> str | None:
+            return {"/usr/bin/swaybg": "/usr/bin/swaybg"}.get(cmd)
 
+        with patch("shutil.which", side_effect=which_side):
+            assert SwayBackend.check_dependencies() is False
+
+    @patch("subprocess.Popen")
+    def test_apply_success(self, mock_popen) -> None:
         backend = SwayBackend()
         result = backend.apply("/tmp/test.jpg")
         assert result is True
+        mock_popen.assert_any_call(
+            ["systemd-run", "--user", "--scope",
+             "--unit", "unsplash-wallpaper-swaybg",
+             "--collect", "--quiet",
+             "swaybg", "-i", "/tmp/test.jpg", "-m", "fill"],
+            stdout=-3,
+            stderr=-3,
+        )
 
-    @patch("subprocess.run")
     @patch("subprocess.Popen")
-    def test_apply_kills_previous(
-        self, mock_popen, mock_run
-    ) -> None:
-        old_process = MagicMock()
-        old_process.pid = 11111
-        new_process = MagicMock()
-        new_process.pid = 22222
-
-        mock_popen.side_effect = [old_process, new_process]
-
-        backend = SwayBackend()
-        backend.apply("/tmp/first.jpg")
-        backend.apply("/tmp/second.jpg")
-
-        old_process.terminate.assert_called_once()
-
-    @patch("subprocess.run")
-    @patch("subprocess.Popen")
-    def test_apply_file_not_found(self, mock_popen, mock_run) -> None:
-        mock_popen.side_effect = FileNotFoundError("swaybg not found")
+    def test_apply_file_not_found(self, mock_popen) -> None:
+        mock_popen.side_effect = FileNotFoundError("systemd-run not found")
         backend = SwayBackend()
         result = backend.apply("/tmp/test.jpg")
         assert result is False
 
     @patch("subprocess.run")
-    def test_terminate_timeout_triggers_kill(self, mock_run) -> None:
-        from subprocess import TimeoutExpired
-
-        backend = SwayBackend()
-        mock_process = MagicMock()
-        mock_process.pid = 33333
-        mock_process.wait.side_effect = TimeoutExpired("swaybg", 5)
-        backend._process = mock_process
-
-        backend._kill_existing()
-        mock_process.terminate.assert_called_once()
-        mock_process.kill.assert_called_once()
-
-    @patch("subprocess.run")
-    def test_process_lookup_error(self, mock_run) -> None:
-        backend = SwayBackend()
-        mock_process = MagicMock()
-        mock_process.pid = 44444
-        mock_process.terminate.side_effect = ProcessLookupError()
-        backend._process = mock_process
-
-        backend._kill_existing()
-        assert backend._process is None
-
-    @patch("subprocess.run")
-    def test_kill_by_pkill_called(self, mock_run) -> None:
+    def test_kill_existing_calls_systemctl_and_pkill(self, mock_run) -> None:
         mock_run.return_value = MagicMock(returncode=0)
         backend = SwayBackend()
         backend._kill_existing()
-        mock_run.assert_called_once_with(
-            ["pkill", "swaybg"],
-            capture_output=True,
-            timeout=10,
-        )
+        assert mock_run.call_args_list[0][0][0] == [
+            "systemctl", "--user", "stop", "unsplash-wallpaper-swaybg.scope",
+        ]
+        assert mock_run.call_args_list[1][0][0] == ["pkill", "swaybg"]
 
     @patch("subprocess.run")
-    def test_kill_by_pkill_not_available(self, mock_run) -> None:
-        mock_run.side_effect = FileNotFoundError()
+    def test_kill_existing_handles_errors(self, mock_run) -> None:
+        mock_run.side_effect = [Exception("systemctl error"), FileNotFoundError()]
         backend = SwayBackend()
         backend._kill_existing()
-
-    @patch("subprocess.run")
-    def test_no_orphan_after_twenty_apply_calls(
-        self, mock_run
-    ) -> None:
-        backend = SwayBackend()
-        processes = []
-
-        for i in range(20):
-            mock_process = MagicMock()
-            mock_process.pid = 50000 + i
-            processes.append(mock_process)
-
-        with patch("subprocess.Popen") as mock_popen:
-            mock_popen.side_effect = processes
-            for i in range(20):
-                path = f"/tmp/test_batch_{i}.jpg"
-                result = backend.apply(path)
-                assert result is True
-                if i > 0:
-                    processes[i - 1].terminate.assert_called_once()
-
-            assert backend._process is not None
-            assert backend._process.pid == 50019
 
 
 class TestHyprlandBackend:

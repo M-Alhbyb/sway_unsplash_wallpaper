@@ -51,65 +51,49 @@ class WallpaperBackend(abc.ABC):
 
 
 class SwayBackend(WallpaperBackend):
-    def __init__(self) -> None:
-        self._process: subprocess.Popen[bytes] | None = None
-
     def apply(self, path: str) -> bool:
+        logger.info("Entering apply()")
         try:
             self._kill_existing()
-            cmd = ["swaybg", "-i", path, "-m", "fill"]
-            self._process = subprocess.Popen(
-                cmd,
+            logger.info("Before systemd-run")
+            subprocess.Popen(
+                [
+                    "systemd-run", "--user", "--scope",
+                    "--unit", "unsplash-wallpaper-swaybg",
+                    "--collect", "--quiet",
+                    "swaybg", "-i", path, "-m", "fill",
+                ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                start_new_session=True,
             )
-            logger.info(
-                "Applied wallpaper via swaybg (pid %d): %s",
-                self._process.pid,
-                path,
-            )
+            logger.info("After systemd-run")
+            logger.info("Applied wallpaper via swaybg: %s", path)
             return True
         except FileNotFoundError:
-            logger.error("swaybg not found. Install swaybg package.")
+            logger.error(
+                "swaybg or systemd-run not found. "
+                "Install swaybg and systemd packages."
+            )
             return False
         except Exception as e:
             logger.error("Failed to apply wallpaper via swaybg: %s", e)
             return False
+        finally:
+            logger.info("Leaving apply()")
 
     def get_name(self) -> str:
         return "Sway"
 
-    def _kill_existing(self) -> None:
-        self._kill_by_pid()
-        self._kill_by_pkill()
-
-    def _kill_by_pid(self) -> None:
-        if self._process is not None:
-            try:
-                self._process.terminate()
-                try:
-                    self._process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    logger.warning(
-                        "swaybg pid %d did not terminate in time, killing",
-                        self._process.pid,
-                    )
-                    self._process.kill()
-                    self._process.wait(timeout=2)
-                logger.debug(
-                    "Terminated previous swaybg (pid %d)",
-                    self._process.pid,
-                )
-            except ProcessLookupError:
-                pass
-            except Exception as e:
-                logger.debug("Error terminating tracked swaybg: %s", e)
-            finally:
-                self._process = None
-
     @staticmethod
-    def _kill_by_pkill() -> None:
+    def _kill_existing() -> None:
+        try:
+            subprocess.run(
+                ["systemctl", "--user", "stop", "unsplash-wallpaper-swaybg.scope"],
+                capture_output=True,
+                timeout=10,
+            )
+        except Exception as e:
+            logger.debug("Error stopping swaybg scope: %s", e)
         try:
             result = subprocess.run(
                 ["pkill", "swaybg"],
@@ -117,9 +101,7 @@ class SwayBackend(WallpaperBackend):
                 timeout=10,
             )
             if result.returncode == 0:
-                logger.info(
-                    "Terminated stray swaybg processes via pkill"
-                )
+                logger.info("Terminated stray swaybg processes via pkill")
         except FileNotFoundError:
             logger.debug("pkill not available, skipping")
         except Exception as e:
@@ -127,7 +109,10 @@ class SwayBackend(WallpaperBackend):
 
     @staticmethod
     def check_dependencies() -> bool:
-        return shutil.which("swaybg") is not None
+        return (
+            shutil.which("swaybg") is not None
+            and shutil.which("systemd-run") is not None
+        )
 
 
 class HyprlandBackend(WallpaperBackend):

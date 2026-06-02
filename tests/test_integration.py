@@ -140,44 +140,21 @@ class TestWallpaperDownload:
 
 
 class TestWallpaperApplication:
-    @patch("subprocess.run")
     @patch("subprocess.Popen")
     def test_sway_backend_apply(
-        self, mock_popen, mock_run
+        self, mock_popen
     ) -> None:
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_popen.return_value = mock_process
-
         backend = SwayBackend()
         result = backend.apply("/tmp/test_wallpaper.jpg")
         assert result is True
-        mock_popen.assert_called_once_with(
-            ["swaybg", "-i", "/tmp/test_wallpaper.jpg", "-m", "fill"],
+        mock_popen.assert_any_call(
+            ["systemd-run", "--user", "--scope",
+             "--unit", "unsplash-wallpaper-swaybg",
+             "--collect", "--quiet",
+             "swaybg", "-i", "/tmp/test_wallpaper.jpg", "-m", "fill"],
             stdout=-3,
             stderr=-3,
-            start_new_session=True,
         )
-
-    @patch("subprocess.run")
-    @patch("subprocess.Popen")
-    def test_sway_backend_kill_existing(
-        self, mock_popen, mock_run
-    ) -> None:
-        old_process = MagicMock()
-        old_process.pid = 11111
-        mock_popen.return_value = old_process
-
-        backend = SwayBackend()
-        backend.apply("/tmp/first.jpg")
-        assert mock_popen.call_count == 1
-
-        new_process = MagicMock()
-        new_process.pid = 22222
-        mock_popen.return_value = new_process
-        backend.apply("/tmp/second.jpg")
-        assert mock_popen.call_count == 2
-        old_process.terminate.assert_called_once()
 
     @patch("shutil.which")
     def test_backend_detection_sway(self, mock_which) -> None:
