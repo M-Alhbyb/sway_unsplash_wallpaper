@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -10,14 +9,12 @@ import gi
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Adw, GdkPixbuf, Gio, GLib, GObject, Gtk
+from gi.repository import Adw, GdkPixbuf, Gio, GObject, Gtk
 
 from unsplash_wallpaper.constants import (
     APP_NAME,
-    CATEGORIES,
     CATEGORY_LABELS,
     VERSION,
-    WALLPAPERS_DIR,
 )
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 from unsplash_wallpaper.ui.category_page import CategoryPage

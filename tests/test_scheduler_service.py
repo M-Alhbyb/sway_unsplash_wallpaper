@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-
-
 from unsplash_wallpaper.constants import INTERVALS
 from unsplash_wallpaper.services.scheduler_service import SchedulerService
 

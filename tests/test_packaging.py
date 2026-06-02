@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 
 class TestImportPackaging:
@@ -65,7 +62,6 @@ class TestImportPackaging:
         assert marker.exists()
 
     def test_entry_points_configured(self) -> None:
-        import configparser
 
         setup_cfg = (
             Path(__file__).parent.parent / "pyproject.toml"
@@ -146,7 +142,7 @@ class TestInstallVerification:
         assert "Unsplash Wallpaper v1.0.0" in result.stdout
 
     def test_diagnostics_text_includes_version(self) -> None:
-        from unsplash_wallpaper.constants import VERSION, APP_NAME
+        from unsplash_wallpaper.constants import VERSION
         result = subprocess.run(
             [
                 sys.executable,

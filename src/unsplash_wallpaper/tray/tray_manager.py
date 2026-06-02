@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import gi
+
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gio, GLib, Gtk
+from gi.repository import Gtk
 
 logger = logging.getLogger(__name__)
 

@@ -11,6 +11,7 @@ gi.require_version("Gtk", "4.0")
 
 from gi.repository import Adw, GObject, Gtk
 
+from unsplash_wallpaper.config import MAX_KEYWORD_LENGTH
 from unsplash_wallpaper.constants import (
     CATEGORIES,
     CATEGORY_LABELS,
@@ -19,7 +20,6 @@ from unsplash_wallpaper.constants import (
     RESOLUTION_KEYS,
     RESOLUTIONS,
 )
-from unsplash_wallpaper.config import MAX_KEYWORD_LENGTH
 
 logger = logging.getLogger(__name__)
 

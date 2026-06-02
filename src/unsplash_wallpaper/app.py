@@ -15,7 +15,6 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-
 import gi
 
 gi.require_version("Adw", "1")
@@ -27,10 +26,7 @@ from unsplash_wallpaper.config import Config
 from unsplash_wallpaper.constants import (
     APP_ID,
     APP_NAME,
-    API_BASE_URL,
     AUTOSTART_FILE,
-    CATEGORIES,
-    CATEGORY_LABELS,
     DATA_DIR,
     DATABASE_PATH,
     INTERVALS,
@@ -86,7 +82,6 @@ class SecretsMaskingFilter(logging.Filter):
                     for k, v in record.args.items()
                 }
             elif isinstance(record.args, tuple):
-                import re
 
                 record.args = tuple(
                     self._mask(a) if "access" in str(a).lower() else a
@@ -277,7 +272,7 @@ class UnsplashWallpaperApp(Adw.Application):
                 DATABASE_PATH.stat().st_size if DATABASE_PATH.exists() else 0
             )
             lines.append("  Database")
-            lines.append(f"    Status:              ✓ connected")
+            lines.append("    Status:              ✓ connected")
             lines.append(f"    Schema version:      {schema}")
             lines.append(f"    History entries:     {count}")
             lines.append(

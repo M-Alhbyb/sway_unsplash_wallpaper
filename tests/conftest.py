@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import pytest
 
 from unsplash_wallpaper.config import Config
-from unsplash_wallpaper.constants import DEFAULT_SETTINGS
 from unsplash_wallpaper.database import Database
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 from unsplash_wallpaper.services.history_service import HistoryService
@@ -15,13 +15,13 @@ from unsplash_wallpaper.services.storage_service import StorageService
 
 
 @pytest.fixture
-def temp_dir() -> Generator[Path, Any, None]:
+def temp_dir() -> Generator[Path, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         yield Path(tmp)
 
 
 @pytest.fixture
-def db(temp_dir: Path) -> Generator[Database, Any, None]:
+def db(temp_dir: Path) -> Generator[Database, Any]:
     db_path = temp_dir / "test.db"
     database = Database(db_path)
     database.initialize()

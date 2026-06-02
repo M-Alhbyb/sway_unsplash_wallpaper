@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from unsplash_wallpaper.config import Config
 from unsplash_wallpaper.constants import DEFAULT_MAX_WALLPAPERS

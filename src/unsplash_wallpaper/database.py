@@ -4,7 +4,6 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
 
 from unsplash_wallpaper.constants import DATABASE_PATH, DB_SCHEMA_VERSION
 from unsplash_wallpaper.models.wallpaper import Wallpaper

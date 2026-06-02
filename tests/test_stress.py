@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,7 +16,6 @@ from unsplash_wallpaper.services.unsplash_service import (
     UnsplashNetworkError,
     UnsplashService,
 )
-
 
 STRESS_ITERATIONS = int(os.environ.get("STRESS_ITERATIONS", "10"))
 
@@ -203,7 +201,7 @@ class TestDatabaseGrowth:
                 unsplash_id=f"growth_{i}",
                 author=f"Growth {i}",
                 local_path=str(storage_path / f"g_{i}.jpg"),
-                downloaded_at=f"2025-01-01T00:00:00",
+                downloaded_at="2025-01-01T00:00:00",
             )
             history.add(wp)
 

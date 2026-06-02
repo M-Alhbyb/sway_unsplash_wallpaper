@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
-from typing import Any
 
 from unsplash_wallpaper.constants import (
     APP_ID,
@@ -209,8 +208,8 @@ WantedBy=timers.target
 
 
 def _find_python_path() -> str:
-    import sys
     import shutil
+    import sys
 
     entry_point = shutil.which("unsplash-wallpaper")
     if entry_point:

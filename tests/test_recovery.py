@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from unsplash_wallpaper.config import Config
-from unsplash_wallpaper.constants import DATABASE_PATH, WALLPAPERS_DIR
 from unsplash_wallpaper.database import Database
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 from unsplash_wallpaper.services.history_service import HistoryService
 from unsplash_wallpaper.services.storage_service import StorageService
 from unsplash_wallpaper.services.unsplash_service import (
-    UnsplashAPIError,
     UnsplashAuthError,
     UnsplashNetworkError,
     UnsplashRateLimitError,
@@ -23,11 +20,6 @@ from unsplash_wallpaper.services.unsplash_service import (
 from unsplash_wallpaper.services.wallpaper_service import (
     SwayBackend,
     WallpaperBackend,
-    WallpaperService,
-)
-from unsplash_wallpaper.services.wallpaper_service import (
-    SwayBackend,
-    WallpaperService,
 )
 
 
@@ -154,7 +146,6 @@ class TestDeletedStorageDirectories:
         assert filepath.exists()
 
     def test_missing_data_directory(self, tmp_path: Path) -> None:
-        from unsplash_wallpaper.constants import DATA_DIR
 
         class MockConfig:
             def get(self, *args, **kwargs):
@@ -172,7 +163,6 @@ class TestDeletedStorageDirectories:
         with patch(
             "unsplash_wallpaper.constants.DATA_DIR", tmp_path / "nonexistent"
         ):
-            from pathlib import Path as P
 
             data_dir = tmp_path / "nonexistent"
             assert not data_dir.exists()

@@ -8,17 +8,16 @@ version = "1.0.0"
 description = "Automatic Unsplash wallpaper changer for Linux desktop"
 readme = "README.md"
 requires-python = ">=3.13"
-license = {text = "MIT"}
+license = "MIT"
 keywords = ["wallpaper", "unsplash", "desktop", "sway", "wayland"]
 authors = [
-    {name = "Unsplash Wallpaper Team", email = "dev@unsplash-wallpaper.local"},
+    {name = "Unsplash Wallpaper Team"},
 ]
 
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications :: GTK",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.13",
     "Topic :: Desktop Environment :: Wallpapers",

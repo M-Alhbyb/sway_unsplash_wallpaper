@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 
 
@@ -59,7 +57,6 @@ class TestHistoryService:
         self, history, storage
     ) -> None:
         max_wp = 3
-        from unsplash_wallpaper.config import Config
 
         history._config.set("max_wallpapers", str(max_wp))
         for i in range(5):

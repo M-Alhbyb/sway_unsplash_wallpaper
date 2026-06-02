@@ -3,6 +3,7 @@
 
 from unsplash_wallpaper.app import UnsplashWallpaperApp
 
+
 def main() -> None:
     UnsplashWallpaperApp.main()
 

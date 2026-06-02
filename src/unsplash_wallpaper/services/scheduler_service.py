@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import gi
+
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 

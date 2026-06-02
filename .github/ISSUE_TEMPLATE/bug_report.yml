@@ -1,0 +1,86 @@
+name: Bug Report
+description: Report a bug to help us improve
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Run '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output from `~/.local/share/unsplash-wallpaper/logs/app.log`
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `unsplash-wallpaper --version`
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Output of `unsplash-wallpaper --diagnostics` (if possible), or provide:
+        - OS and version
+        - Desktop environment (Sway, GNOME, KDE, etc.)
+        - Python version
+      placeholder: |
+        OS: Fedora 41
+        DE: Sway 1.10
+        Python: 3.13.2
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have checked for existing issues with the same bug
+          required: true
+        - label: I have included all relevant logs and diagnostics
+          required: true

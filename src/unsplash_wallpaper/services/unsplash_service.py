@@ -7,13 +7,13 @@ from typing import Any
 
 import requests
 
+from unsplash_wallpaper.config import Config
 from unsplash_wallpaper.constants import (
     API_BASE_URL,
     API_PHOTOS_RANDOM,
     DEFAULT_RETRY_LIMIT,
     RESOLUTIONS,
 )
-from unsplash_wallpaper.config import Config
 
 logger = logging.getLogger(__name__)
 

@@ -10,9 +10,7 @@ import pytest
 from unsplash_wallpaper.services.wallpaper_service import (
     SwayBackend,
     WallpaperBackend,
-    WallpaperService,
 )
-
 
 pytestmark = pytest.mark.skipif(
     not bool(os.environ.get("SWAY_VALIDATION_TESTS")),

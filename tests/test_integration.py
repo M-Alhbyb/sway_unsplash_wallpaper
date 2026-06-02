@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from unsplash_wallpaper.config import Config
-from unsplash_wallpaper.constants import DATABASE_PATH, WALLPAPERS_DIR
 from unsplash_wallpaper.database import Database
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 from unsplash_wallpaper.services.history_service import HistoryService
@@ -22,7 +19,6 @@ from unsplash_wallpaper.services.unsplash_service import (
 from unsplash_wallpaper.services.wallpaper_service import (
     SwayBackend,
     WallpaperBackend,
-    WallpaperService,
 )
 from unsplash_wallpaper.system.autostart import AutostartManager
 
