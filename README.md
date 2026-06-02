@@ -31,15 +31,9 @@ Unsplash Wallpaper downloads high-resolution photos from [Unsplash](https://unsp
 | **Secrets Masking** | API keys automatically masked in log files |
 | **Sway Support** | Native integration with Sway (swaybg) |
 
-## Screenshots
+## Demo
 
-| Dashboard | Preferences |
-|:---:|:---:|
-| ![Dashboard](screenshots/dashboard.png) | ![Preferences](screenshots/preferences.png) |
-
-| History | Tray Menu |
-|:---:|:---:|
-| ![History](screenshots/history.png) | ![Tray Menu](screenshots/tray-menu.png) |
+![Unsplash Wallpaper Demo](screenshots/demo.gif)
 
 ## Installation
 
