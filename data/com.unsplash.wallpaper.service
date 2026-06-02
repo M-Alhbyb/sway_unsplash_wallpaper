@@ -4,10 +4,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
-ExecStart=/usr/bin/unsplash-wallpaper --daemon
-Restart=on-failure
-RestartSec=10
+Type=oneshot
+ExecStart=/usr/bin/unsplash-wallpaper --run-job
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=default.target

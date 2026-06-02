@@ -84,7 +84,7 @@ class TestImportPackaging:
         )
         assert service_file.exists()
         content = service_file.read_text()
-        assert "Type=simple" in content
+        assert "Type=oneshot" in content
 
     def test_systemd_timer_unit(self) -> None:
         timer_file = (

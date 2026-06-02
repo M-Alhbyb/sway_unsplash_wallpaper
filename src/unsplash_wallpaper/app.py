@@ -13,6 +13,7 @@ import sys
 import threading
 import traceback
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import gi
@@ -40,7 +41,6 @@ from unsplash_wallpaper.constants import (
 from unsplash_wallpaper.database import Database
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 from unsplash_wallpaper.services.history_service import HistoryService
-from unsplash_wallpaper.services.scheduler_service import SchedulerService
 from unsplash_wallpaper.services.storage_service import StorageService
 from unsplash_wallpaper.services.unsplash_service import (
     UnsplashAuthError,
@@ -115,8 +115,6 @@ class UnsplashWallpaperApp(Adw.Application):
 
         self._window: MainWindow | None = None
         self._tray: TrayManager | None = None
-        self._daemon_mode = False
-        self._tray_mode = False
         self._shutting_down = False
 
         self._setup_actions()
@@ -156,6 +154,9 @@ class UnsplashWallpaperApp(Adw.Application):
         sys.excepthook = handle_exception
 
     def _setup_logging(self) -> None:
+        root = logging.getLogger()
+        if root.handlers:
+            return
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         handler = logging.handlers.RotatingFileHandler(
             LOG_FILE,
@@ -178,6 +179,66 @@ class UnsplashWallpaperApp(Adw.Application):
         root.addHandler(console)
 
         logger.info("Logging initialized")
+
+    def _query_systemd_timer_property(self, prop: str) -> str | None:
+        try:
+            result = subprocess.run(
+                ["systemctl", "--user", "show", "--property", prop, "--value", f"{APP_ID}.timer"],
+                capture_output=True, text=True, timeout=10,
+            )
+            val = result.stdout.strip()
+            return val if val else None
+        except Exception as e:
+            logger.debug("Failed to query systemd timer %s: %s", prop, e)
+            return None
+
+    def _query_systemd_service_property(self, prop: str) -> str | None:
+        try:
+            result = subprocess.run(
+                ["systemctl", "--user", "show", "--property", prop, "--value", f"{APP_ID}.service"],
+                capture_output=True, text=True, timeout=10,
+            )
+            val = result.stdout.strip()
+            return val if val else None
+        except Exception as e:
+            logger.debug("Failed to query systemd service %s: %s", prop, e)
+            return None
+
+    @staticmethod
+    def _format_interval_to_systemd(interval_label: str) -> str:
+        minutes = INTERVALS.get(interval_label, 60)
+        if minutes < 60:
+            return f"{minutes}min"
+        hours = minutes // 60
+        return f"{hours}h"
+
+    def _read_timer_interval(self) -> str | None:
+        try:
+            if not SYSTEMD_TIMER_FILE.exists():
+                return None
+            content = SYSTEMD_TIMER_FILE.read_text()
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith("OnUnitActiveSec="):
+                    return line.split("=", 1)[1]
+            return None
+        except Exception as e:
+            logger.debug("Failed to read timer file: %s", e)
+            return None
+
+    def _format_timestamp(self, raw: str | None) -> str:
+        if not raw or raw in ("", "n/a", "0"):
+            return "n/a"
+        if raw.isdigit():
+            from datetime import datetime, timezone
+            try:
+                micro = int(raw)
+                if micro > 0:
+                    dt = datetime.fromtimestamp(micro / 1_000_000, tz=timezone.utc)
+                    return dt.strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, OSError):
+                pass
+        return raw
 
     def _report_diagnostics(self) -> str:
         lines = []
@@ -324,25 +385,47 @@ class UnsplashWallpaperApp(Adw.Application):
                 lines.append("    Configured keywords: 0")
             lines.append("")
 
-            lines.append("  Scheduler")
+            systemd_interval = self._read_timer_interval()
+            configured_systemd = self._format_interval_to_systemd(interval)
+            interval_match = "✓" if systemd_interval == configured_systemd else "✗ MISMATCH"
+
+            lines.append("  Systemd Timer")
+            timer_active = self._query_systemd_timer_property("ActiveState")
+            next_trigger = self._query_systemd_timer_property("NextTriggerUSec")
+            last_trigger = self._query_systemd_timer_property("LastTriggerUSec")
             lines.append(
-                f"    Interval:            {self._scheduler.get_interval()}"
+                f"    Status:              {timer_active or 'not installed'}"
             )
             lines.append(
-                f"    Running:             {'✓' if self._scheduler.is_running else '— not active (diagnostics snapshot)'}"
+                f"    Next Trigger:        {self._format_timestamp(next_trigger)}"
             )
+            lines.append(
+                f"    Last Trigger:        {self._format_timestamp(last_trigger)}"
+            )
+            lines.append(f"    Configured Interval: {interval}")
+            lines.append(f"    Systemd Interval:    {systemd_interval or 'n/a'}")
+            lines.append(f"    Interval Match:      {interval_match}")
             lines.append("")
 
-            lines.append("  Storage Paths")
-            lines.append(f"    Data:                {DATA_DIR}")
-            lines.append(f"    Wallpapers:          {WALLPAPERS_DIR}")
-            lines.append(f"    Logs:                {LOG_DIR}")
-            lines.append(f"    Database:            {DATABASE_PATH}")
-            lines.append(f"    Autostart:           {AUTOSTART_FILE}")
-            lines.append(f"    Systemd service:     {SYSTEMD_SERVICE_FILE}")
-            lines.append(f"    Systemd timer:       {SYSTEMD_TIMER_FILE}")
+            lines.append("  Systemd Service")
+            service_active = self._query_systemd_service_property("ActiveState")
+            sub_state = self._query_systemd_service_property("SubState")
+            service_status = service_active or "not installed"
+            if sub_state and sub_state not in ("", "n/a"):
+                service_status += f" ({sub_state})"
+            lines.append(f"    Status:              {service_status}")
         except Exception as e:
             lines.append(f"  Error reading config: {e}")
+
+        lines.append("")
+        lines.append("  Storage Paths")
+        lines.append(f"    Data:                {DATA_DIR}")
+        lines.append(f"    Wallpapers:          {WALLPAPERS_DIR}")
+        lines.append(f"    Logs:                {LOG_DIR}")
+        lines.append(f"    Database:            {DATABASE_PATH}")
+        lines.append(f"    Autostart:           {AUTOSTART_FILE}")
+        lines.append(f"    Systemd service:     {SYSTEMD_SERVICE_FILE}")
+        lines.append(f"    Systemd timer:       {SYSTEMD_TIMER_FILE}")
 
         lines.append("")
         lines.append("=" * 56)
@@ -394,7 +477,6 @@ class UnsplashWallpaperApp(Adw.Application):
         self._history = HistoryService(self._db, self._storage, self._config)
         self._unsplash = UnsplashService(self._config)
         self._wallpaper_service = WallpaperService()
-        self._scheduler = SchedulerService()
 
     def _setup_actions(self) -> None:
         actions: list[tuple[str, Callable, list[str]]] = [
@@ -414,13 +496,109 @@ class UnsplashWallpaperApp(Adw.Application):
         self.set_accels_for_action("app.quit", ["<primary>q"])
         self.set_accels_for_action("app.preferences", ["<primary>comma"])
 
+    def _change_wallpaper(self) -> bool:
+        """Synchronous core wallpaper change. Returns True on success."""
+        try:
+            keywords = self._config.get_keywords()
+            categories = self._config.get_categories()
+            resolution = self._config.get("resolution", "full_hd")
+
+            if keywords:
+                query = random.choice(keywords)
+                photo = self._unsplash.get_random_photo(
+                    resolution=resolution,
+                    query=query,
+                )
+            else:
+                photo = self._unsplash.get_random_photo(
+                    categories=categories if categories else None,
+                    resolution=resolution,
+                )
+
+            if self._history.is_downloaded(photo["id"]):
+                logger.info(
+                    "Photo %s already downloaded, skipping",
+                    photo["id"],
+                )
+                return False
+
+            image_data = self._unsplash.download_image(photo["url"])
+
+            if not self._validate_image_data(image_data):
+                logger.error("Downloaded image data is not a valid image")
+                return False
+
+            wallpaper = Wallpaper(
+                unsplash_id=photo["id"],
+                author=photo["author"],
+                description=photo["description"],
+                local_path="",
+                download_location=photo["download_location"],
+                category=photo.get("category", ""),
+                url=photo["url"],
+            )
+            filepath = self._storage.save_wallpaper(image_data, wallpaper.filename)
+            wallpaper.local_path = str(filepath)
+
+            self._history.add(wallpaper)
+
+            success = self._wallpaper_service.apply(str(filepath))
+            if success:
+                self._show_notification(
+                    "Wallpaper Changed",
+                    f"By {wallpaper.author}",
+                )
+
+            self._unsplash.track_download(photo["download_location"])
+            return success
+
+        except UnsplashAuthError as e:
+            logger.error("Auth error: %s", e)
+            self._show_notification(
+                "Unsplash API Error",
+                "Invalid or missing API key. Please check settings.",
+            )
+            return False
+        except UnsplashRateLimitError as e:
+            logger.error("Rate limit: %s", e)
+            self._show_notification(
+                "API Rate Limit", "Unsplash API rate limit exceeded."
+            )
+            return False
+        except UnsplashNetworkError as e:
+            logger.error("Network error: %s", e)
+            self._show_notification(
+                "Network Error",
+                "Failed to download wallpaper. Check your connection.",
+            )
+            return False
+        except Exception as e:
+            logger.error("Failed to change wallpaper: %s", e, exc_info=True)
+            self._show_notification(
+                "Error", f"Failed to change wallpaper: {e}"
+            )
+            return False
+
     def _on_change_wallpaper(self, *args: Any) -> None:
         if self._window:
             self._window.show_loading(True)
         threading.Thread(
-            target=self._download_and_apply_wallpaper,
+            target=self._gui_change_wallpaper,
             daemon=True,
         ).start()
+
+    def _gui_change_wallpaper(self) -> None:
+        success = self._change_wallpaper()
+        if success:
+            latest = self._history.get_latest()
+            if latest:
+                GLib.idle_add(self._apply_wallpaper, latest)
+        GLib.idle_add(self._finish_download, None)
+
+    def _apply_wallpaper(self, wallpaper: Wallpaper) -> None:
+        self._update_dashboard()
+        self._append_history(wallpaper)
+        self._update_tray()
 
     def _on_open_preferences(self, *args: Any) -> None:
         self._show_preferences()
@@ -450,7 +628,6 @@ class UnsplashWallpaperApp(Adw.Application):
 
     def _on_quit(self, *args: Any) -> None:
         self._shutting_down = True
-        self._scheduler.cleanup()
         self._unsplash.close()
         if self._tray:
             self._tray.shutdown()
@@ -463,15 +640,8 @@ class UnsplashWallpaperApp(Adw.Application):
         Adw.Application.do_startup(self)
         self._apply_style()
         self._setup_tray()
-        self._start_scheduler()
-        if self._daemon_mode:
-            logger.info("Running in daemon mode (no window)")
-            self.hold()
 
     def do_activate(self) -> None:
-        if self._daemon_mode:
-            logger.debug("Daemon mode: skipping window activation")
-            return
         if self._window is None:
             self._window = MainWindow(application=self)
 
@@ -507,114 +677,18 @@ class UnsplashWallpaperApp(Adw.Application):
         GLib.idle_add(self._window.show_first_run_prompt)
 
     def _on_close_request(self, *args: Any) -> bool:
-        if self._tray and not self._daemon_mode:
+        if self._tray:
             self._window.hide()
             return True
         return False
 
     def _setup_tray(self) -> None:
-        if self._tray_mode or not self._daemon_mode:
-            self._tray = TrayManager(self)
-            if self._tray.setup():
-                logger.info("Tray icon initialized")
-            else:
-                self._tray = None
-                logger.info("Tray icon not available")
-
-    def _start_scheduler(self) -> None:
-        interval = self._config.get("update_interval", "1 hour")
-        self._scheduler.set_interval(interval)
-        self._scheduler.start(self._on_scheduled_update)
-
-    def _on_scheduled_update(self) -> None:
-        logger.info("Scheduled wallpaper update triggered")
-        threading.Thread(
-            target=self._download_and_apply_wallpaper,
-            daemon=True,
-        ).start()
-
-    def _download_and_apply_wallpaper(self) -> None:
-        try:
-            keywords = self._config.get_keywords()
-            categories = self._config.get_categories()
-            resolution = self._config.get("resolution", "full_hd")
-
-            if keywords:
-                query = random.choice(keywords)
-                photo = self._unsplash.get_random_photo(
-                    resolution=resolution,
-                    query=query,
-                )
-            else:
-                photo = self._unsplash.get_random_photo(
-                    categories=categories if categories else None,
-                    resolution=resolution,
-                )
-
-            if self._history.is_downloaded(photo["id"]):
-                logger.info(
-                    "Photo %s already downloaded, skipping",
-                    photo["id"],
-                )
-                GLib.idle_add(self._finish_download, None)
-                return
-
-            image_data = self._unsplash.download_image(photo["url"])
-
-            if not self._validate_image_data(image_data):
-                logger.error("Downloaded image data is not a valid image")
-                GLib.idle_add(self._finish_download, None)
-                return
-
-            wallpaper = Wallpaper(
-                unsplash_id=photo["id"],
-                author=photo["author"],
-                description=photo["description"],
-                local_path="",
-                download_location=photo["download_location"],
-                category=photo.get("category", ""),
-                url=photo["url"],
-            )
-            filename = wallpaper.filename
-            filepath = self._storage.save_wallpaper(image_data, filename)
-            wallpaper.local_path = str(filepath)
-
-            self._history.add(wallpaper)
-
-            GLib.idle_add(self._apply_wallpaper, wallpaper)
-
-            threading.Thread(
-                target=self._unsplash.track_download,
-                args=(photo["download_location"],),
-                daemon=True,
-            ).start()
-
-        except UnsplashAuthError as e:
-            logger.error("Auth error: %s", e)
-            self._show_notification(
-                "Unsplash API Error",
-                "Invalid or missing API key. Please check settings.",
-            )
-            GLib.idle_add(self._finish_download, None)
-        except UnsplashRateLimitError as e:
-            logger.error("Rate limit: %s", e)
-            self._show_notification(
-                "API Rate Limit", "Unsplash API rate limit exceeded."
-            )
-            GLib.idle_add(self._finish_download, None)
-        except UnsplashNetworkError as e:
-            logger.error("Network error: %s", e)
-            self._show_notification(
-                "Network Error",
-                "Failed to download wallpaper. Check your connection.",
-            )
-            GLib.idle_add(self._finish_download, None)
-        except Exception as e:
-            logger.error("Failed to download wallpaper: %s", e, exc_info=True)
-            self._show_notification(
-                "Error", f"Failed to change wallpaper: {e}"
-            )
-            GLib.idle_add(self._finish_download, None)
+        self._tray = TrayManager(self)
+        if self._tray.setup():
+            logger.info("Tray icon initialized")
+        else:
+            self._tray = None
+            logger.info("Tray icon not available")
 
     def _validate_image_data(self, data: bytes) -> bool:
         if not data or len(data) < 32:
@@ -637,22 +711,6 @@ class UnsplashWallpaperApp(Adw.Application):
     def _finish_download(self, _result: Any) -> None:
         if self._window:
             self._window.show_loading(False)
-
-    def _apply_wallpaper(self, wallpaper: Wallpaper) -> None:
-        if not wallpaper.local_path:
-            return
-        success = self._wallpaper_service.apply(wallpaper.local_path)
-        if success:
-            self._show_notification(
-                "Wallpaper Changed",
-                f"By {wallpaper.author}",
-            )
-            self._update_dashboard()
-            self._append_history(wallpaper)
-        self._update_tray()
-        if self._tray:
-            self._tray.set_attention(not success)
-        self._finish_download(None)
 
     def _show_notification(self, title: str, body: str) -> None:
         if not self._config.get_bool("notifications"):
@@ -750,13 +808,46 @@ class UnsplashWallpaperApp(Adw.Application):
     def _on_settings_changed(
         self, _prefs: PreferencesWindow, settings: dict[str, str]
     ) -> None:
+        # Capture old interval BEFORE the config-save loop (the loop
+        # overwrites config values, making a post-loop comparison useless).
+        old_interval = self._config.get("update_interval")
+
         for key, value in settings.items():
             current = self._config.get(key)
             if current != value:
                 self._config.set(key, value)
 
         if "update_interval" in settings:
-            self._scheduler.set_interval(settings["update_interval"])
+            current_interval = old_interval
+            new_interval = settings["update_interval"]
+            logger.info(
+                "Interval check — current: '%s', new: '%s'",
+                current_interval,
+                new_interval,
+            )
+            if current_interval != new_interval:
+                logger.info(
+                    "Interval differs — updating timer from '%s' to '%s'",
+                    current_interval,
+                    new_interval,
+                )
+                success = AutostartManager.update_timer_interval(new_interval)
+                if success:
+                    self._show_notification(
+                        "Timer Updated",
+                        f"Wallpaper timer set to {new_interval}.",
+                    )
+                else:
+                    self._show_notification(
+                        "Timer Update Failed",
+                        "Could not update systemd timer. Check logs.",
+                    )
+                logger.info(
+                    "Timer interval updated from '%s' to '%s' (success=%s)",
+                    current_interval,
+                    new_interval,
+                    success,
+                )
 
         if "autostart" in settings:
             if settings["autostart"] == "true":
@@ -932,6 +1023,7 @@ class UnsplashWallpaperApp(Adw.Application):
             return
 
         if "--diagnostics" in args:
+            self._setup_logging()
             self._init_services()
             print(self._report_diagnostics())
             return
@@ -953,10 +1045,16 @@ class UnsplashWallpaperApp(Adw.Application):
             print("Systemd service and timer removed")
             return
 
-        if "--daemon" in args:
-            self._daemon_mode = True
-            args = [a for a in args if a != "--daemon"]
+        if "--run-job" in args:
+            self._setup_logging()
+            self._init_services()
+            success = self._change_wallpaper()
+            self._unsplash.close()
+            self._db.close_all()
+            sys.exit(0 if success else 1)
+            return
 
+        AutostartManager.migrate_service_file()
         self._init_services()
         self._update_tray()
 
@@ -969,7 +1067,9 @@ class UnsplashWallpaperApp(Adw.Application):
 
 
 def main() -> None:
-    from unsplash_wallpaper.constants import APP_ID_GUI
+    """Module-level entry point for the gui-scripts entry point."""
+    UnsplashWallpaperApp.main()
 
-    app = UnsplashWallpaperApp(application_id=APP_ID_GUI)
-    app.run()
+
+if __name__ == "__main__":
+    UnsplashWallpaperApp.main()

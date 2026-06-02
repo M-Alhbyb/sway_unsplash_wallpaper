@@ -7,14 +7,14 @@
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](pyproject.toml)
 
-Unsplash Wallpaper downloads high-resolution photos from [Unsplash](https://unsplash.com) and sets them as your desktop wallpaper on a configurable schedule. It features a modern GTK4 + Libadwaita GUI, system tray support, and full systemd integration.
+Unsplash Wallpaper downloads high-resolution photos from [Unsplash](https://unsplash.com) and sets them as your desktop wallpaper. It features a modern GTK4 + Libadwaita GUI and full systemd timer integration for scheduling.
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| **Automatic Downloads** | Fetches fresh wallpapers from Unsplash on a schedule |
-| **Scheduled Changes** | Configurable intervals from 15 minutes to 24 hours |
+| **Automatic Downloads** | Fetches fresh wallpapers from Unsplash on a systemd timer |
+| **Scheduled Changes** | Configurable intervals from 15 minutes to 24 hours via systemd timer |
 | **Category Selection** | Choose from 10 curated categories (nature, tech, space, cars, architecture, minimal, mountains, forests, city, gaming) |
 | **Custom Keywords** | Search wallpapers by your own keywords |
 | **No Repetition** | Tracks download history to avoid duplicate wallpapers |
@@ -24,16 +24,34 @@ Unsplash Wallpaper downloads high-resolution photos from [Unsplash](https://unsp
 | **Desktop Notifications** | Native notifications on wallpaper changes |
 | **Multiple Resolutions** | HD, Full HD, 2K, 4K, or original resolution |
 | **Auto Start** | Optional XDG autostart and systemd user service |
-| **Daemon Mode** | Headless operation for servers or minimal setups |
+| **Linux-Native Scheduling** | Pure systemd timer — no internal scheduler, no daemon process |
 | **First-Run Wizard** | Guided API key setup on first launch |
-| **Diagnostics** | Built-in diagnostics report (`--diagnostics`) |
+| **Diagnostics** | Built-in diagnostics report (`--diagnostics`) showing real systemd status |
 | **Crash Handler** | Desktop notification on unexpected crashes |
 | **Secrets Masking** | API keys automatically masked in log files |
 | **Sway Support** | Native integration with Sway (swaybg) |
 
-## Demo
+## Architecture
 
-![Unsplash Wallpaper Demo](screenshots/demo.gif)
+```
+GUI                    systemd Timer
+  │                        │
+  │  (config only)         │  fires at interval
+  ▼                        ▼
+Configuration          systemd Service
+                           │
+                           │  --run-job
+                           ▼
+                     Wallpaper Change Job
+                           │
+                           ▼
+                     Wallpaper Service
+```
+
+- The **GUI** manages settings, API keys, keywords/categories, history, and manual wallpaper changes — it never performs scheduling.
+- **systemd timer** fires at the configured interval and starts the service.
+- **systemd service** runs `unsplash-wallpaper --run-job`, which exits after completion.
+- No internal scheduler, no long-running daemon, no duplicate scheduling systems.
 
 ## Installation
 
@@ -101,16 +119,13 @@ Settings are stored in `~/.local/share/unsplash-wallpaper/database.db` and inclu
 # GUI mode (default)
 unsplash-wallpaper
 
-# Tray mode (background with tray icon)
-unsplash-wallpaper --tray
+# Run wallpaper change job (used by systemd)
+unsplash-wallpaper --run-job
 
-# Daemon mode (headless, no GUI)
-unsplash-wallpaper --daemon
-
-# Install systemd user service
+# Install systemd user service and timer
 unsplash-wallpaper --install-service
 
-# Remove systemd user service
+# Remove systemd user service and timer
 unsplash-wallpaper --remove-service
 
 # Show version
@@ -122,7 +137,7 @@ unsplash-wallpaper --diagnostics
 
 ### Systemd Integration
 
-To run wallpaper changes on a timer without a desktop session:
+To set up automatic wallpaper changes via systemd timer:
 
 ```bash
 unsplash-wallpaper --install-service
@@ -130,43 +145,27 @@ unsplash-wallpaper --install-service
 
 This installs and starts a systemd user service and timer. The timer triggers wallpaper changes at your configured interval.
 
-### Tray Mode
+**Changing the interval**: Open the GUI, go to Preferences, and select a new interval. The timer is automatically regenerated and reloaded — no application restart required.
 
-Run `unsplash-wallpaper --tray` for background operation. The tray menu provides quick access to:
+**Manual wallpaper change**: Click "Change Now" in the GUI or use the tray menu. This does not interact with the scheduler; it performs a one-shot change.
 
-- Change wallpaper now
-- Open dashboard
-- Open preferences
-- Open wallpaper folder
-- Quit
+### Diagnostics
 
-## Architecture
+```bash
+unsplash-wallpaper --diagnostics
+```
+
+The diagnostics report queries real systemd state:
 
 ```
-src/unsplash_wallpaper/
-├── app.py                        # Main application (Adw.Application)
-├── config.py                     # Settings management
-├── constants.py                  # Constants, defaults, resolutions
-├── database.py                   # SQLite database with WAL mode
-├── entry_point.py                # CLI entry point
-├── __main__.py                   # python -m support
-├── models/
-│   └── wallpaper.py              # Wallpaper data model
-├── services/
-│   ├── unsplash_service.py       # Unsplash API client with retry logic
-│   ├── wallpaper_service.py      # Wallpaper backends (Sway, GNOME, KDE, Hyprland)
-│   ├── scheduler_service.py      # Background scheduling
-│   ├── history_service.py        # Wallpaper history management
-│   └── storage_service.py        # File storage management
-├── ui/
-│   ├── main_window.py            # Main dashboard window
-│   ├── preferences_window.py     # Settings window
-│   ├── category_page.py          # Category selection
-│   └── history_page.py           # Wallpaper history view
-├── tray/
-│   └── tray_manager.py           # System tray (AyatanaAppIndicator)
-└── system/
-    └── autostart.py              # Autostart and systemd management
+  Systemd Timer
+    Status:              active
+    Next Trigger:        2026-06-02 18:05:00
+    Last Trigger:        2026-06-02 17:05:00
+    Interval:            15 minutes
+
+  Systemd Service
+    Status:              inactive (dead)
 ```
 
 ## Backend Support

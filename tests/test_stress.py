@@ -10,7 +10,6 @@ from unsplash_wallpaper.config import Config
 from unsplash_wallpaper.database import Database
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 from unsplash_wallpaper.services.history_service import HistoryService
-from unsplash_wallpaper.services.scheduler_service import SchedulerService
 from unsplash_wallpaper.services.storage_service import StorageService
 from unsplash_wallpaper.services.unsplash_service import (
     UnsplashNetworkError,
@@ -74,50 +73,6 @@ class TestContinuousRotation:
 
         assert history.count() <= 5
         db.close_all()
-
-
-class TestSchedulerStress:
-    def test_scheduler_restart_cycles(self) -> None:
-        sched = SchedulerService()
-        call_count = 0
-
-        def cb():
-            nonlocal call_count
-            call_count += 1
-
-        for _ in range(STRESS_ITERATIONS):
-            sched.set_interval("15 minutes")
-            sched.start(cb)
-            assert sched.is_running is True
-            sched.stop()
-            assert sched.is_running is False
-            sched.cleanup()
-
-        assert sched.is_running is False
-        assert sched._timer_id is None
-
-    def test_rapid_interval_changes(self) -> None:
-        sched = SchedulerService()
-
-        def cb():
-            pass
-
-        intervals = [
-            "15 minutes",
-            "30 minutes",
-            "1 hour",
-            "3 hours",
-            "6 hours",
-            "12 hours",
-            "24 hours",
-        ]
-
-        sched.start(cb)
-        for _ in range(STRESS_ITERATIONS):
-            for interval in intervals:
-                sched.set_interval(interval)
-
-        sched.stop()
 
 
 class TestAPIFailureStress:

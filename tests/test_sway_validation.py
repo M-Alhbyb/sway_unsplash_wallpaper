@@ -146,34 +146,6 @@ class TestSwayValidation:
             mock_old.terminate.assert_called_once()
             mock_old.kill.assert_called_once()
 
-    def test_no_duplicate_schedulers(self) -> None:
-        from unsplash_wallpaper.services.scheduler_service import (
-            SchedulerService,
-        )
-
-        callbacks = []
-
-        def make_cb(idx):
-            def cb():
-                callbacks.append(idx)
-
-            return cb
-
-        s1 = SchedulerService()
-        s2 = SchedulerService()
-
-        s1.set_interval("15 minutes")
-        s2.set_interval("15 minutes")
-
-        s1.start(make_cb(1))
-        s2.start(make_cb(2))
-
-        assert s1.is_running is True
-        assert s2.is_running is True
-
-        s1.stop()
-        s2.stop()
-
     def test_suspend_resume(self) -> None:
         backend = SwayBackend()
         with (

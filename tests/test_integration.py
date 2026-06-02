@@ -10,7 +10,6 @@ from unsplash_wallpaper.config import Config
 from unsplash_wallpaper.database import Database
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 from unsplash_wallpaper.services.history_service import HistoryService
-from unsplash_wallpaper.services.scheduler_service import SchedulerService
 from unsplash_wallpaper.services.storage_service import StorageService
 from unsplash_wallpaper.services.unsplash_service import (
     UnsplashAuthError,
@@ -237,39 +236,6 @@ class TestHistoryPersistence:
         assert history.count() <= 3
 
 
-class TestSchedulerExecution:
-    def test_scheduler_integration(self) -> None:
-        sched = SchedulerService()
-        assert sched.is_running is False
-        assert sched.get_interval() == "1 hour"
-
-        call_log: list[str] = []
-
-        def on_tick() -> None:
-            call_log.append("tick")
-
-        sched.set_interval("15 minutes")
-        sched.start(on_tick)
-        assert sched.is_running is True
-
-        sched.stop()
-        assert sched.is_running is False
-
-    def test_scheduler_restart(self) -> None:
-        sched = SchedulerService()
-
-        def cb() -> None:
-            pass
-
-        sched.start(cb)
-        assert sched.is_running is True
-        sched.set_interval("30 minutes")
-        assert sched.is_running is True
-        assert sched.get_interval_minutes() == 30
-        sched.stop()
-        assert sched.is_running is False
-
-
 class TestTrayFunctionality:
     def test_tray_init_no_indicator(self) -> None:
         from unsplash_wallpaper.tray.tray_manager import TrayManager
@@ -317,23 +283,6 @@ class TestApplicationRestart:
         assert retrieved.unsplash_id == "restart1"
 
         db2.close_all()
-
-    def test_scheduler_cleanup_and_restart(self) -> None:
-        sched = SchedulerService()
-        logs: list[str] = []
-
-        def cb() -> None:
-            logs.append("exec")
-
-        sched.start(cb)
-        assert sched.is_running is True
-        sched.cleanup()
-        assert sched.is_running is False
-        assert sched._timer_id is None
-
-        sched.start(cb)
-        assert sched.is_running is True
-        sched.stop()
 
 
 class TestDatabaseRecovery:
@@ -412,20 +361,148 @@ class TestAutostart:
         )
         assert "Type=Application" in entry
         assert "Unsplash Wallpaper" in entry
-        assert "/usr/bin/unsplash-wallpaper --tray" in entry
+        assert "/usr/bin/unsplash-wallpaper" in entry
 
     def test_systemd_service_content(self) -> None:
         service = AutostartManager.get_systemd_service(
             python_path="/usr/bin/unsplash-wallpaper"
         )
-        assert "Type=simple" in service
-        assert "/usr/bin/unsplash-wallpaper --daemon" in service
-        assert "Restart=on-failure" in service
+        assert "Type=oneshot" in service
+        assert "/usr/bin/unsplash-wallpaper --run-job" in service
+        assert "Restart" not in service
 
     def test_systemd_timer_content(self) -> None:
         timer = AutostartManager.get_systemd_timer()
         assert "OnBootSec=1min" in timer
-        assert "OnUnitActiveSec=1h" in timer
+        assert "OnUnitActiveSec=" in timer
+
+    def test_systemd_timer_dynamic_interval(self) -> None:
+        timer = AutostartManager.get_systemd_timer("15 minutes")
+        assert "OnUnitActiveSec=15min" in timer
+
+        timer = AutostartManager.get_systemd_timer("6 hours")
+        assert "OnUnitActiveSec=6h" in timer
+
+        timer = AutostartManager.get_systemd_timer("24 hours")
+        assert "OnUnitActiveSec=24h" in timer
+
+    def test_update_timer_interval_writes_file_and_reloads(
+        self, temp_dir: Path
+    ) -> None:
+        timer_file = temp_dir / "com.unsplash.wallpaper.timer"
+        timer_file.write_text(AutostartManager.get_systemd_timer("1 hour"))
+        assert "OnUnitActiveSec=1h" in timer_file.read_text()
+
+        with (
+            patch(
+                "unsplash_wallpaper.system.autostart.SYSTEMD_TIMER_FILE",
+                timer_file,
+            ),
+            patch(
+                "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_DIR",
+                temp_dir,
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.returncode = 0
+
+            # Before save: OnUnitActiveSec=1h
+            assert "OnUnitActiveSec=1h" in timer_file.read_text()
+
+            result = AutostartManager.update_timer_interval("15 minutes")
+            assert result is True
+
+            # After save: OnUnitActiveSec=15min
+            content = timer_file.read_text()
+            assert "OnUnitActiveSec=15min" in content
+            assert "OnUnitActiveSec=1h" not in content
+
+            # Verify systemctl commands were executed
+            assert mock_run.call_count == 2
+            daemon_reload_call = mock_run.call_args_list[0]
+            assert "systemctl" in str(daemon_reload_call)
+            assert "daemon-reload" in str(daemon_reload_call)
+            restart_call = mock_run.call_args_list[1]
+            assert "restart" in str(restart_call)
+
+
+class TestServiceMigration:
+    def test_needs_migration_no_file(self, temp_dir: Path) -> None:
+        with patch(
+            "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_FILE",
+            temp_dir / "nonexistent.service",
+        ):
+            assert AutostartManager.needs_migration() is False
+
+    def test_needs_migration_new_format(self, temp_dir: Path) -> None:
+        service_file = temp_dir / "com.unsplash.wallpaper.service"
+        service_file.write_text(AutostartManager.get_systemd_service())
+        with patch(
+            "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_FILE",
+            service_file,
+        ):
+            assert AutostartManager.needs_migration() is False
+
+    def test_needs_migration_old_daemon_format(self, temp_dir: Path) -> None:
+        service_file = temp_dir / "com.unsplash.wallpaper.service"
+        service_file.write_text(
+            "[Service]\nType=simple\nExecStart=/usr/bin/unsplash-wallpaper --daemon\n"
+        )
+        with patch(
+            "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_FILE",
+            service_file,
+        ):
+            assert AutostartManager.needs_migration() is True
+
+    def test_needs_migration_old_no_flag(self, temp_dir: Path) -> None:
+        service_file = temp_dir / "com.unsplash.wallpaper.service"
+        service_file.write_text(
+            "[Service]\nType=simple\nExecStart=/usr/bin/unsplash-wallpaper\n"
+        )
+        with patch(
+            "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_FILE",
+            service_file,
+        ):
+            assert AutostartManager.needs_migration() is True
+
+    def test_migrate_service_file_rewrites(self, temp_dir: Path) -> None:
+        service_file = temp_dir / "com.unsplash.wallpaper.service"
+        service_file.write_text(
+            "[Service]\nType=simple\nExecStart=/usr/bin/unsplash-wallpaper --daemon\n"
+        )
+        with (
+            patch(
+                "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_FILE",
+                service_file,
+            ),
+            patch(
+                "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_DIR",
+                temp_dir,
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.returncode = 0
+            result = AutostartManager.migrate_service_file()
+            assert result is True
+            new_content = service_file.read_text()
+            assert "--run-job" in new_content
+            assert "Type=oneshot" in new_content
+            assert "--daemon" not in new_content
+            assert "Type=simple" not in new_content
+
+    def test_migrate_noop_when_current(self, temp_dir: Path) -> None:
+        service_file = temp_dir / "com.unsplash.wallpaper.service"
+        service_file.write_text(AutostartManager.get_systemd_service())
+        with (
+            patch(
+                "unsplash_wallpaper.system.autostart.SYSTEMD_SERVICE_FILE",
+                service_file,
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            result = AutostartManager.migrate_service_file()
+            assert result is True
+            mock_run.assert_not_called()
 
 
 class TestFullFlow:
