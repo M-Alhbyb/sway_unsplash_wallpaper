@@ -5,6 +5,10 @@ import shutil
 from pathlib import Path
 
 from unsplash_wallpaper.constants import WALLPAPERS_DIR
+from unsplash_wallpaper.services.image_optimizer import (
+    get_target_resolution,
+    optimize_image,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +16,16 @@ logger = logging.getLogger(__name__)
 class StorageService:
     def __init__(self, storage_path: Path = WALLPAPERS_DIR) -> None:
         self.storage_path = storage_path.resolve()
+        self._optimize_enabled: bool = True
+        self._target_resolution: tuple[int, int] | None = None
         self.ensure_directories()
+
+    def set_optimization(self, enabled: bool, resolution: str = "full_hd") -> None:
+        self._optimize_enabled = enabled
+        if enabled:
+            self._target_resolution = get_target_resolution(resolution)
+        else:
+            self._target_resolution = None
 
     @property
     def root(self) -> Path:
@@ -39,8 +52,14 @@ class StorageService:
         self._validate_filename(filename)
         filepath = (self.storage_path / filename).resolve()
         self._validate_within_storage(filepath)
-        filepath.write_bytes(data)
-        logger.info("Saved wallpaper to %s", filepath)
+        if self._optimize_enabled and self._target_resolution:
+            max_w, max_h = self._target_resolution
+            optimized = optimize_image(data, max_w, max_h)
+            filepath.write_bytes(optimized)
+            logger.info("Saved wallpaper to %s (optimized)", filepath)
+        else:
+            filepath.write_bytes(data)
+            logger.info("Saved wallpaper to %s", filepath)
         return filepath
 
     def delete_wallpaper(self, filename: str) -> bool:

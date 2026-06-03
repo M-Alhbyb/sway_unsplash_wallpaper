@@ -61,8 +61,8 @@ class TrayManager:
             return True
 
         except (ImportError, ValueError) as e:
-            logger.warning(
-                "AyatanaAppIndicator not available: %s", e
+            logger.debug(
+                "Tray support unavailable: %s", e
             )
             return False
 

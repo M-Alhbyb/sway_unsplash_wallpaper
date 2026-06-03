@@ -64,7 +64,7 @@ class MainWindow(Adw.ApplicationWindow):
     ) -> None:
         super().__init__(application=application, **kwargs)
         self.set_title(APP_NAME)
-        self.set_default_size(800, 600)
+        self.set_default_size(600, 500)
 
         self._current_wallpaper_path: str | None = None
         self._last_update: str = ""
@@ -132,6 +132,14 @@ class MainWindow(Adw.ApplicationWindow):
         switcher.set_stack(self._stack)
         switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
         header.set_title_widget(switcher)
+        self._switcher = switcher
+
+        breakpoint = Adw.Breakpoint(condition=Adw.BreakpointCondition.parse("max-width: 500px"))
+        narrow_switcher = Adw.ViewSwitcher()
+        narrow_switcher.set_stack(self._stack)
+        narrow_switcher.set_policy(Adw.ViewSwitcherPolicy.NARROW)
+        breakpoint.add_setter(header, "title_widget", narrow_switcher)
+        self.add_breakpoint(breakpoint)
 
         # Loading spinner overlay
         spinner_box = Gtk.Box(
@@ -190,7 +198,8 @@ class MainWindow(Adw.ApplicationWindow):
         first_run_desc = Gtk.Label(
             label="To get started, you need to configure your Unsplash API access key.",
             wrap=True,
-            max_width_chars=50,
+            xalign=0.0,
+            max_width_chars=40,
         )
         first_run_box.append(first_run_desc)
 
@@ -225,15 +234,17 @@ class MainWindow(Adw.ApplicationWindow):
         preview_box.append(preview_title)
 
         self._preview_image = Gtk.Image()
-        self._preview_image.set_size_request(320, 200)
         self._preview_image.set_from_icon_name("image-x-generic")
         self._preview_image.set_pixel_size(64)
+        self._preview_image.set_hexpand(True)
+        self._preview_image.set_vexpand(False)
         preview_box.append(self._preview_image)
 
         self._preview_info = Gtk.Label(
             label="No wallpaper set. Click 'Change Now' to get started.",
             xalign=0.0,
             wrap=True,
+            max_width_chars=40,
         )
         preview_box.append(self._preview_info)
 
@@ -375,7 +386,7 @@ class MainWindow(Adw.ApplicationWindow):
             self._current_wallpaper_path = wallpaper_path
             try:
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                    wallpaper_path, 320, 200, True
+                    wallpaper_path, 400, 250, True
                 )
                 if pixbuf:
                     self._preview_image.set_from_pixbuf(pixbuf)

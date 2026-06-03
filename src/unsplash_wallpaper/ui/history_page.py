@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections import OrderedDict
 from pathlib import Path
 
 import gi
@@ -9,7 +10,7 @@ import gi
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Adw, GdkPixbuf, GLib, GObject, Gtk
+from gi.repository import Adw, GdkPixbuf, GLib, GObject, Gtk, Pango
 
 from unsplash_wallpaper.models.wallpaper import Wallpaper
 
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 _THUMBNAIL_SEM = threading.BoundedSemaphore(4)
+
+MAX_THUMBNAIL_CACHE = 50
 
 
 class HistoryPage(Adw.Bin):
@@ -39,7 +42,7 @@ class HistoryPage(Adw.Bin):
     ) -> None:
         super().__init__()
         self._wallpapers: list[Wallpaper] = wallpapers or []
-        self._thumbnail_cache: dict[int, GdkPixbuf.Pixbuf | None] = {}
+        self._thumbnail_cache: OrderedDict[int, GdkPixbuf.Pixbuf | None] = OrderedDict()
         self._cache_lock = threading.Lock()
         self._build_ui()
 
@@ -78,9 +81,11 @@ class HistoryPage(Adw.Bin):
         empty_icon.set_pixel_size(48)
         self._empty_box.append(empty_icon)
         empty_label = Gtk.Label(
-            label="No wallpapers in history yet.\nClick 'Change Now' to "
-                  "download your first wallpaper.",
+            label="No wallpapers in history yet.\n"
+                  "Click 'Change Now' to download your first wallpaper.",
             justify=Gtk.Justification.CENTER,
+            wrap=True,
+            max_width_chars=30,
         )
         empty_label.add_css_class("dim-label")
         self._empty_box.append(empty_label)
@@ -109,6 +114,7 @@ class HistoryPage(Adw.Bin):
             with self._cache_lock:
                 cached = self._thumbnail_cache.get(wp.id)
                 if cached is not None:
+                    self._thumbnail_cache.move_to_end(wp.id)
                     self._set_thumbnail(image_widget, cached)
                     return
 
@@ -118,6 +124,7 @@ class HistoryPage(Adw.Bin):
                     with self._cache_lock:
                         cached = self._thumbnail_cache.get(wp.id)
                         if cached is not None:
+                            self._thumbnail_cache.move_to_end(wp.id)
                             GLib.idle_add(
                                 self._set_thumbnail, image_widget, cached
                             )
@@ -127,7 +134,7 @@ class HistoryPage(Adw.Bin):
                 if wp.local_path and Path(wp.local_path).exists():
                     try:
                         pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                            wp.local_path, 80, 60, True
+                            wp.local_path, 64, 48, True
                         )
                     except Exception as e:
                         logger.debug(
@@ -137,6 +144,9 @@ class HistoryPage(Adw.Bin):
                 if wp.id is not None and pixbuf is not None:
                     with self._cache_lock:
                         self._thumbnail_cache[wp.id] = pixbuf
+                        self._thumbnail_cache.move_to_end(wp.id)
+                        while len(self._thumbnail_cache) > MAX_THUMBNAIL_CACHE:
+                            self._thumbnail_cache.popitem(last=False)
                 GLib.idle_add(
                     self._set_thumbnail, image_widget, pixbuf
                 )
@@ -162,7 +172,7 @@ class HistoryPage(Adw.Bin):
         )
 
         thumb = Gtk.Image()
-        thumb.set_size_request(80, 60)
+        thumb.set_size_request(64, 48)
         thumb.set_from_icon_name("image-x-generic")
         box.append(thumb)
 
@@ -174,7 +184,8 @@ class HistoryPage(Adw.Bin):
         info_box.set_hexpand(True)
 
         author_label = Gtk.Label(
-            label=wp.author or "Unknown Author"
+            label=wp.author or "Unknown Author",
+            ellipsize=Pango.EllipsizeMode.END,
         )
         author_label.set_xalign(0.0)
         author_label.add_css_class("heading")

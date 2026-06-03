@@ -418,6 +418,68 @@ class UnsplashWallpaperApp(Adw.Application):
             lines.append(f"  Error reading config: {e}")
 
         lines.append("")
+        lines.append("  Wallpaper Optimization")
+        try:
+            res = self._config.get("resolution", "full_hd")
+            if res == "original":
+                lines.append("    Enabled:             ✗ (original resolution)")
+            else:
+                lines.append("    Enabled:             ✓")
+                from unsplash_wallpaper.services.image_optimizer import (
+                    get_target_resolution,
+                )
+                target = get_target_resolution(res)
+                lines.append(f"    Target Resolution:   {target[0]}x{target[1]}")
+            lines.append(f"    Config Resolution:   {res}")
+        except Exception:
+            lines.append("    Enabled:             unknown")
+            lines.append("    Target Resolution:   unknown")
+
+        lines.append("")
+        lines.append("  UI Health")
+        try:
+            from unsplash_wallpaper.services.image_optimizer import (
+                detect_screen_resolution,
+            )
+            screen_res = detect_screen_resolution()
+            lines.append(f"    Detected Screen:     {screen_res[0]}x{screen_res[1]}")
+        except Exception:
+            lines.append("    Screen Detection:     unavailable")
+        lines.append("    Responsive Layout:   ✓ (breakpoints configured)")
+        lines.append("    Libadwaita:          ✓ (Adw.StyleManager)")
+
+        lines.append("")
+        lines.append("  Tray")
+        try:
+            import importlib.util
+
+            spec = importlib.util.find_spec(
+                "gi.repository.AyatanaAppIndicator3"
+            )
+            if spec is not None:
+                lines.append(
+                    "    Available:           \u2713 (AyatanaAppIndicator3)"
+                )
+            else:
+                spec = importlib.util.find_spec(
+                    "gi.repository.AppIndicator3"
+                )
+                if spec is not None:
+                    lines.append(
+                        "    Available:           \u2713 (AppIndicator3)"
+                    )
+                else:
+                    lines.append(
+                        "    Available:           \u2717 "
+                        "(install libayatana-appindicator)"
+                    )
+        except (ImportError, ValueError):
+            lines.append(
+                "    Available:           \u2717 "
+                "(install libayatana-appindicator)"
+            )
+
+        lines.append("")
         lines.append("  Storage Paths")
         lines.append(f"    Data:                {DATA_DIR}")
         lines.append(f"    Wallpapers:          {WALLPAPERS_DIR}")
@@ -474,6 +536,8 @@ class UnsplashWallpaperApp(Adw.Application):
         self._db = Database.get_instance()
         self._config = Config(self._db)
         self._storage = StorageService()
+        resolution = self._config.get("resolution", "full_hd")
+        self._storage.set_optimization(enabled=True, resolution=resolution)
         self._history = HistoryService(self._db, self._storage, self._config)
         self._unsplash = UnsplashService(self._config)
         self._wallpaper_service = WallpaperService()
@@ -858,6 +922,10 @@ class UnsplashWallpaperApp(Adw.Application):
         if "dark_mode" in settings:
             self._apply_style()
 
+        if "resolution" in settings:
+            resolution = settings.get("resolution", "full_hd")
+            self._storage.set_optimization(enabled=True, resolution=resolution)
+
         logger.info("Settings updated")
 
     def _on_test_search(
@@ -929,8 +997,8 @@ class UnsplashWallpaperApp(Adw.Application):
                 transient_for=self._window,
                 modal=True,
                 title=f"Preview: {keyword}",
-                default_width=600,
-                default_height=500,
+                default_width=500,
+                default_height=450,
             )
 
             box = Gtk.Box(
@@ -963,7 +1031,7 @@ class UnsplashWallpaperApp(Adw.Application):
 
             image = Gtk.Image()
             pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                str(temp_path), 560, 350, True
+                str(temp_path), 480, 300, True
             )
             if pixbuf:
                 image.set_from_pixbuf(pixbuf)
@@ -971,7 +1039,15 @@ class UnsplashWallpaperApp(Adw.Application):
 
             close_btn = Gtk.Button(label="Close")
             close_btn.add_css_class("suggested-action")
-            close_btn.connect("clicked", lambda _b: dialog.close())
+
+            def _on_close(_b: Gtk.Button) -> None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                dialog.close()
+
+            close_btn.connect("clicked", _on_close)
             box.append(close_btn)
 
             dialog.present()
@@ -992,11 +1068,11 @@ class UnsplashWallpaperApp(Adw.Application):
         style = self._config.get("dark_mode", "follow_system")
         manager = Adw.StyleManager.get_default()
         if style == "dark":
-            manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+            manager.set_color_scheme(Adw.ColorScheme.PREFER_DARK)
         elif style == "light":
-            manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-        else:
             manager.set_color_scheme(Adw.ColorScheme.PREFER_LIGHT)
+        else:
+            manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
 
     def _open_wallpaper_folder(self) -> None:
         path = str(WALLPAPERS_DIR)

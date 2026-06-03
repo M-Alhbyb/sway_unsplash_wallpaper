@@ -45,7 +45,7 @@ class PreferencesWindow(Adw.PreferencesWindow):
         self.set_transient_for(parent)
         self.set_modal(True)
         self.set_title("Preferences")
-        self.set_default_size(500, 600)
+        self.set_default_size(420, 600)
 
         self._settings = dict(settings)
         self._build_ui()
@@ -72,7 +72,7 @@ class PreferencesWindow(Adw.PreferencesWindow):
 
         api_help = Adw.ActionRow()
         api_help.set_subtitle(
-            "Get your access key from https://unsplash.com/developers"
+            "Get your access key from unsplash.com/developers"
         )
         open_btn = Gtk.Button(label="Open", css_classes=["flat"])
         open_btn.connect("clicked", self._on_open_unsplash)
@@ -179,12 +179,12 @@ class PreferencesWindow(Adw.PreferencesWindow):
             btn.set_active(cat in current_cats)
             btn.connect("toggled", self._on_cat_toggled, cat)
             self._cat_toggles[cat] = btn
-            categories_grid.attach(btn, i % 4, i // 4, 1, 1)
+            categories_grid.attach(btn, i % 3, i // 3, 1, 1)
 
         # Keywords group
         keywords_group = Adw.PreferencesGroup(title="Keywords")
         keywords_group.set_description(
-            "Comma-separated search keywords (overrides categories when set)"
+            "Comma-separated search keywords"
         )
         options_page.add(keywords_group)
 

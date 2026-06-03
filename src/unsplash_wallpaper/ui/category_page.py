@@ -65,7 +65,7 @@ class CategoryPage(Adw.Bin):
             btn.set_active(cat in self._selected)
             btn.connect("toggled", self._on_toggle, cat)
             self._toggle_buttons[cat] = btn
-            grid.attach(btn, i % 4, i // 4, 1, 1)
+            grid.attach(btn, i % 3, i // 3, 1, 1)
 
         self._select_all_btn = Gtk.Button(label="Select All")
         self._select_all_btn.connect("clicked", self._on_select_all)
